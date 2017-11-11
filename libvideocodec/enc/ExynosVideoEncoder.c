@@ -41,7 +41,14 @@
 
 #include <sys/poll.h>
 
+#ifdef USE_MFC_MEDIA
+#ifndef V4L2_CID_MPEG_VIDEO_ROI_CONTROL
+#undef USE_MFC_MEDIA
+#endif
+#endif
+
 #include "videodev2_exynos_media.h"
+
 #ifdef USE_EXYNOS_MEDIA_EXT
 #include "videodev2_exynos_media_ext.h"
 #endif
