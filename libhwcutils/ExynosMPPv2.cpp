@@ -65,9 +65,11 @@ void ExynosMPP::initMPP()
     case MPP_VGR:
         mName = "VGR";
         break;
+#ifdef MPP_VPP_G
     case MPP_VPP_G:
         mName = "G";
         break;
+#endif
     case MPP_MSC:
         mName = "MSC";
         break;
@@ -133,10 +135,12 @@ bool ExynosMPP::isSrcConfigChanged(exynos_mpp_img &c1, exynos_mpp_img &c2)
 
 bool ExynosMPP::isFormatSupportedByMPP(int format)
 {
+#ifdef MPP_VPP_G
     if (mType == MPP_VPP_G) {
         if (!isFormatRgb(format))
             return false;
     }
+#endif
 
     switch (format) {
     case HAL_PIXEL_FORMAT_BGRA_8888:
@@ -1394,7 +1398,12 @@ void ExynosMPP::cleanupM2M(bool noFenceWait)
 
 void ExynosMPP::cleanupInternalMPP()
 {
-    if (mType != MPP_VG && mType != MPP_VGR && mType != MPP_VPP_G)
+    if (mType != MPP_VG
+        && mType != MPP_VGR
+#ifdef MPP_VPP_G
+        && mType != MPP_VPP_G
+#endif
+		)
         return;
 
     mDisplay = NULL;

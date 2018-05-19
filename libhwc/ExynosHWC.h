@@ -193,11 +193,14 @@ const int FIMD_DMA_CH_IDX[S3C_FB_MAX_WIN] = {0, 1, 1, 1, 0};
 
 #ifdef USES_VPP
 #ifndef MPP_VPP_G
-#define MPP_VPP_G       10
 const uint32_t VPP_ASSIGN_ORDER[] = {MPP_VG, MPP_VGR};
 #else
 const uint32_t VPP_ASSIGN_ORDER[] = {MPP_VPP_G, MPP_VG, MPP_VGR};
 #endif
+#endif
+
+#ifndef MPP_DEFAULT
+#define MPP_DEFAULT MPP_VGR
 #endif
 
 const size_t NUM_GSC_UNITS = sizeof(AVAILABLE_GSC_UNITS) /

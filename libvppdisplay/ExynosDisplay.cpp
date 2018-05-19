@@ -1043,8 +1043,10 @@ bool ExynosDisplay::isOverlaySupported(hwc_layer_1_t &layer, size_t index, bool 
             ExynosMPPModule* internalMPP = mInternalMPPs[i];
             hwc_layer_1_t extMPPTempOutLayer = extMPPOutLayer;
             if (isBothMPPUsed) {
+#ifdef MPP_VPP_G
                 if (internalMPP->mType == MPP_VPP_G)
                     continue;
+#endif
                 /* extMPPOutLayer is output of ExtMPP
                  * The output of ExtMPP is the input of IntMPP
                  */
@@ -3341,20 +3343,11 @@ int ExynosDisplay::getDeconDMAType(ExynosMPPModule* internalMPP)
         return IDMA_VG0 + internalMPP->mIndex;
     else if (internalMPP->mType == MPP_VGR)
         return IDMA_VGR0 + internalMPP->mIndex;
-    else if (internalMPP->mType == MPP_VPP_G) {
-        switch (internalMPP->mIndex) {
-        case 0:
-            return IDMA_G0;
-        case 1:
-            return IDMA_G1;
-        case 2:
-            return IDMA_G2;
-        case 3:
-            return IDMA_G3;
-        default:
-            return -1;
-        }
-    } else
+#ifdef MPP_VPP_G
+    else if (internalMPP->mType == MPP_VPP_G)
+        return MPP_VPP_G_TYPE(internalMPP->mIndex);
+#endif
+    else
         return -1;
 }
 
