@@ -10,6 +10,22 @@
 class ExynosMPPModule;
 
 #define HWC_SKIP_RENDERING 0x80000000
+
+//
+// int __fastcall ExynosDisplay::configureHandle(_DWORD *a1, _DWORD *a2, int a3,
+//         int a4, int a5, _DWORD *a6)    <-- a1 = Class instance
+//
+// void ExynosDisplay::configureHandle(private_handle_t *handle, size_t index,
+//         hwc_layer_1_t &layer, int fence_fd, decon_win_config &cfg)
+//
+// v8 = *(_DWORD *)(a4 + 8);    <--  hwc_layer_1_t[8] = flags
+//
+// if ( a2 && v8 & 0x20 ) ...
+//
+// if ((layer.flags & HWC_SET_OPAQUE) && handle && ...
+//
+#define HWC_SET_OPAQUE     0x00000020
+
 enum {
     eSkipLayer                    =     0x00000001,
     eUnsupportedPlaneAlpha        =     0x00000002,

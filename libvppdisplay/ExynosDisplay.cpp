@@ -1402,13 +1402,16 @@ void ExynosDisplay::configureHandle(private_handle_t *handle, size_t index,
                 cfg.src.h /= 2;
         }
     }
-    /* transparent region coordinates is on source buffer */
-    //getLayerRegion(layer, cfg.transparent_area, eTransparentRegion);
+
+    // transparent region coordinates is on source buffer
+    getLayerRegion(layer, cfg.transparent_area, eTransparentRegion);
+
     cfg.transparent_area.x += cfg.dst.x;
     cfg.transparent_area.y += cfg.dst.y;
 
-    /* opaque region coordinates is on screen */
-    //getLayerRegion(layer, cfg.covered_opaque_area, eCoveredOpaqueRegion);
+    // opaque region coordinates is on screen
+    // REMARK: requires framework-support, useless otherwise
+    // getLayerRegion(layer, cfg.opaque_area, eCoveredOpaqueRegion);
 
     if (isOpaque && (handle->format == HAL_PIXEL_FORMAT_RGBX_8888)) {
         handle->format = HAL_PIXEL_FORMAT_RGBA_8888;
@@ -1815,7 +1818,7 @@ int ExynosDisplay::handleWindowUpdate(hwc_display_contents_1_t __unused *content
         for (size_t i = 0; i < NUM_HW_WINDOWS; i++) {
             memset(&config[i].transparent_area, 0, sizeof(config[i].transparent_area));
 #ifdef HWC_SET_OPAQUE
-            memset(&config[i].covered_opaque_area, 0, sizeof(config[i].covered_opaque_area));
+            memset(&config[i].opaque_area, 0, sizeof(config[i].opaque_area));
 #endif
         }
     }
@@ -1828,16 +1831,16 @@ void ExynosDisplay::getLayerRegion(hwc_layer_1_t &layer __unused, decon_win_rect
     hwc_rect_t const *hwcRects = NULL;
     unsigned int numRects = 0;
     switch (regionType) {
-#if 0
+	// REMARK: adding support for eTransparentRegion and eCoveredOpaqueRegion
+	// requires framework-sided changes, which isn't something to consider.
+	// Hack this by marking the whole area as possibly transparent 
     case eTransparentRegion:
-        hwcRects = layer.transparentRegion.rects;
-        numRects = layer.transparentRegion.numRects;
+        hwcRects = layer.visibleRegionScreen.rects;
+        numRects = layer.visibleRegionScreen.numRects;
         break;
     case eCoveredOpaqueRegion:
-        hwcRects = layer.coveredOpaqueRegion.rects;
-        numRects = layer.coveredOpaqueRegion.numRects;
+		// TODO: anything remarkable to recognize layers as opaque?
         break;
-#endif
     default:
         ALOGE("%s:: Invalid regionType (%d)", __func__, regionType);
         return;
@@ -2288,6 +2291,10 @@ void ExynosDisplay::determineYuvOverlay(hwc_display_contents_1_t *contents)
                 } else
                     layer.flags &= ~HWC_SKIP_RENDERING;
             }
+
+            /* set first layer as opaque */
+            /* if (j == 0)
+                layer.flags |= HWC_SET_OPAQUE; */
 
             /* check yuv surface */
             if (!isFormatRgb(handle->format)) {
