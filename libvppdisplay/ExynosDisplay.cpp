@@ -371,6 +371,9 @@ ExynosDisplay::ExynosDisplay(uint32_t type, struct exynos5_hwc_composer_device_1
 
     property_get("debug.hwc.winupdate", val, "1");
     mDebugWinupdateEnabled = (!strcmp(val, "1") || !strcmp(val, "true"));
+
+    property_get("debug.hwc.max_hw_overlays", val, "-1");
+    mDebugMaxHwOverlays = atoi(val);
 }
 
 ExynosDisplay::~ExynosDisplay()
@@ -2478,7 +2481,7 @@ void ExynosDisplay::determineSupportedOverlays(hwc_display_contents_1_t *content
             continue;
         }
 
-        if (layer.handle) {
+        if (layer.handle && i < mDebugMaxHwOverlays) {
             private_handle_t *handle = private_handle_t::dynamicCast(layer.handle);
             if (handle->format == HAL_PIXEL_FORMAT_EXYNOS_YCbCr_420_SP_M_PRIV
                     && rectCount < mBackUpFrect.size())
@@ -2538,6 +2541,8 @@ void ExynosDisplay::determineSupportedOverlays(hwc_display_contents_1_t *content
                 else if (isOverlaySupported(contents->hwLayers[i], i, false, &dummyInternal, &dummyExternal))
                     mLayerInfos[i]->mCheckOverlayFlag |= eUnknown;
             }
+        } else if (i >= mDebugMaxHwOverlays) {
+            mLayerInfos[i]->mCheckOverlayFlag |= eForceFbEnabled;
         } else {
             mLayerInfos[i]->mCheckOverlayFlag |= eInvalidHandle;
         }
@@ -2549,6 +2554,7 @@ void ExynosDisplay::determineSupportedOverlays(hwc_display_contents_1_t *content
         mLastFb = i;
         layer.compositionType = HWC_FRAMEBUFFER;
         mLayerInfos[i]->compositionType = layer.compositionType;
+        mLayerInfos[i]->mCheckOverlayFlag |= eForceFbEnabled;
 
         dumpLayer(eDebugOverlaySupported, &contents->hwLayers[i]);
     }

@@ -286,7 +286,7 @@ class ExynosDisplay {
 #if defined(USES_SINGLE_DECON) || defined(USES_TWO_DECON)
         bool   mDebugDualDisplayDisabled;
 #endif
-
         bool   mDebugWinupdateEnabled;
+		int    mDebugMaxHwOverlays;
 };
 #endif
