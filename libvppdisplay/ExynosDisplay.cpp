@@ -362,6 +362,8 @@ ExynosDisplay::ExynosDisplay(uint32_t type, struct exynos5_hwc_composer_device_1
     if (mWinData == NULL)
         DISPLAY_LOGE("Fail to allocate mWinData");
 
+    char def[PROPERTY_VALUE_MAX];
+
 #if defined(USES_SINGLE_DECON) || defined(USES_TWO_DECON)
     bool dualFlag = 0;
     property_get("persist.sf.dualdisplay", val, "0");
@@ -372,8 +374,14 @@ ExynosDisplay::ExynosDisplay(uint32_t type, struct exynos5_hwc_composer_device_1
     property_get("debug.hwc.winupdate", val, "1");
     mDebugWinupdateEnabled = (!strcmp(val, "1") || !strcmp(val, "true"));
 
-    property_get("debug.hwc.max_hw_overlays", val, "-1");
+	sprintf(def, "%d", NUM_HW_WINDOWS);
+    property_get("debug.hwc.max_hw_overlays", val, def);
     mDebugMaxHwOverlays = atoi(val);
+
+    if (mDebugMaxHwOverlays < 0)
+        mDebugMaxHwOverlays = 0;
+    else if (mDebugMaxHwOverlays > NUM_HW_WINDOWS)
+        mDebugMaxHwOverlays = NUM_HW_WINDOWS;
 }
 
 ExynosDisplay::~ExynosDisplay()
