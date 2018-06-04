@@ -282,5 +282,11 @@ class ExynosDisplay {
         virtual bool isOverlaySupportedByIDMA(hwc_layer_1_t &layer, size_t index);
         virtual void getIDMAMinSize(hwc_layer_1_t &layer, int *w, int *h);
         bool checkConfigChanged(struct decon_win_config_data &lastConfigData, struct decon_win_config_data &newConfigData);
+
+#if defined(USES_SINGLE_DECON) || defined(USES_TWO_DECON)
+        bool   mDebugDualDisplayDisabled;
+#endif
+
+        bool   mDebugWinupdateEnabled;
 };
 #endif

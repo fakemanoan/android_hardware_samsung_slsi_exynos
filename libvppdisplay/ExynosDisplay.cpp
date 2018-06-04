@@ -361,6 +361,16 @@ ExynosDisplay::ExynosDisplay(uint32_t type, struct exynos5_hwc_composer_device_1
     mWinData = (struct decon_win_config_data *)malloc(sizeof(*mWinData));
     if (mWinData == NULL)
         DISPLAY_LOGE("Fail to allocate mWinData");
+
+#if defined(USES_SINGLE_DECON) || defined(USES_TWO_DECON)
+    bool dualFlag = 0;
+    property_get("persist.sf.dualdisplay", val, "0");
+    dualFlag = atoi(val);
+    mDebugDualDisplayDisabled = (atoi(val) == 1);
+#endif
+
+    property_get("debug.hwc.winupdate", val, "1");
+    mDebugWinupdateEnabled = (!strcmp(val, "1") || !strcmp(val, "true"));
 }
 
 ExynosDisplay::~ExynosDisplay()
@@ -1545,15 +1555,12 @@ int ExynosDisplay::handleWindowUpdate(hwc_display_contents_1_t __unused *content
     int yAlign = 0;
     int hAlign = 0;
 
-#if defined(USES_DUAL_DISPLAY)
-    return -eWindowUpdateDisabled;
+#if defined(USES_SINGLE_DECON) || defined(USES_TWO_DECON)
+    if(mDebugDualDisplayDisabled)
+        return -eWindowUpdateDisabled;
 #endif
 
-
-    char value[PROPERTY_VALUE_MAX];
-    property_get("debug.hwc.winupdate", value, "1");
-
-    if (!(!strcmp(value, "1") || !strcmp(value, "true")))
+    if (!mDebugWinupdateEnabled)
         return -eWindowUpdateDisabled;
 
     if (DECON_WIN_UPDATE_IDX < 0)
