@@ -557,8 +557,13 @@ void ExynosDisplay::dupFence(int fence, hwc_display_contents_1_t *contents)
 void ExynosDisplay::dump(android::String8& result)
 {
     result.appendFormat("\n", mType);
-    result.appendFormat("    type=%d\n", mType);
-    result.appendFormat("    hardware windows=%d\n", NUM_HW_WINDOWS);
+    result.appendFormat("    type            = %d\n", mType);
+#if defined(USES_SINGLE_DECON) || defined(USES_TWO_DECON)
+    result.appendFormat("    dual display    = %s\n", mDebugDualDisplayDisabled ? "true" : "false");
+#endif
+    result.appendFormat("    winupdate       = %s\n", mDebugWinupdateEnabled ? "true" : "false");
+    result.appendFormat("    num hw windows  = %d\n", NUM_HW_WINDOWS);
+    result.appendFormat("    max hw overlays = %d\n", mDebugMaxHwOverlays);
     result.appendFormat("\n", mType);
 
     result.appendFormat("Primary device's window information\n", mType);
