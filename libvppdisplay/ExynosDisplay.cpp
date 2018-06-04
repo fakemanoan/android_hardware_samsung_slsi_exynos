@@ -582,6 +582,8 @@ void ExynosDisplay::dump(android::String8& result)
         }
         result.append("\n");
     }
+
+    dumpMPPs(result);
 }
 
 void ExynosDisplay::freeMPP()
