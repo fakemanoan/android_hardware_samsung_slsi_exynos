@@ -551,7 +551,7 @@ void ExynosDisplay::dump(android::String8& result)
     result.appendFormat("Primary device's window information\n", mType);
 
     result.append(
-            "   type   |    handle    |   color   | blend | pa | prot | dma |     format     |           source          |        destination        |        transparent        | intMPP  | extMPP \n"
+            "   type   |    handle    |   color   | blend | pa | prot | dma |     format     |     source (x,y,w,h)      |   destination (x,y,w,h)   |   transparent (x,y,w,h)   | intMPP  | extMPP \n"
             "----------+--------------+-----------+-------+----+------+-----+----------------+---------------------------+---------------------------+---------------------------+---------+-------\n");
     //        8_______ | 12__________ | 9________ | 5____ | 2_ | 4___ | 3__ | 14____________ | [5____,5____,5____,5____] | [5____,5____,5____,5____] | [5____,5____,5____,5____] | [2_,2_] | [2_,2_]\n"
 
