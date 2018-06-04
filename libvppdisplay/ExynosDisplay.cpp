@@ -648,10 +648,12 @@ void ExynosDisplay::dumpLayerInfo(android::String8& result)
         for (size_t i = 0; i < mLayerInfos.size(); i++) {
             unsigned int type = mLayerInfos[i]->compositionType;
             static char const* compositionTypeName[] = {
-                "GLES",
+                "FB",
                 "HWC",
                 "BACKGROUND",
                 "FB TARGET",
+                "SIDEBAND",
+                "CURSOR",
                 "UNKNOWN"};
 
             if (type >= NELEM(compositionTypeName))
