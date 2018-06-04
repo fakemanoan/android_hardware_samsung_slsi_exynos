@@ -543,31 +543,45 @@ void ExynosDisplay::dupFence(int fence, hwc_display_contents_1_t *contents)
 
 void ExynosDisplay::dump(android::String8& result)
 {
+    result.appendFormat("\n", mType);
+    result.appendFormat("    type=%d\n", mType);
+    result.appendFormat("    hardware windows=%d\n", NUM_HW_WINDOWS);
+    result.appendFormat("\n", mType);
+
+    result.appendFormat("Primary device's window information\n", mType);
+
     result.append(
-            "   type   |    handle    |  color   | blend | pa |    format     |   position    |     size      | intMPP  | extMPP \n"
-            "----------+--------------|----------+-------+----+---------------+---------------+----------------------------------\n");
-    //        8_______ | 12__________ | 8_______ | 5____ | 2_ | 13___________ | [5____,5____] | [5____,5____] | [2_,2_] | [2_,2_]\n"
+            "   type   |    handle    |   color   | blend | pa | prot | dma |     format     |           source          |        destination        |        transparent        | intMPP  | extMPP \n"
+            "----------+--------------+-----------+-------+----+------+-----+----------------+---------------------------+---------------------------+---------------------------+---------+-------\n");
+    //        8_______ | 12__________ | 9________ | 5____ | 2_ | 4___ | 3__ | 14____________ | [5____,5____,5____,5____] | [5____,5____,5____,5____] | [5____,5____,5____,5____] | [2_,2_] | [2_,2_]\n"
 
     for (size_t i = 0; i < NUM_HW_WINDOWS; i++) {
         struct decon_win_config &config = mLastConfigData.config[i];
         if ((config.state == config.DECON_WIN_STATE_DISABLED) &&
             (mLastMPPMap[i].internal_mpp.type == -1) &&
             (mLastMPPMap[i].external_mpp.type == -1)){
-            result.appendFormat(" %8s | %12s | %8s | %5s | %2s | %13s | %13s | %13s",
-                    "OVERLAY", "-", "-", "-", "-", "-", "-", "-");
+            result.appendFormat(" %8s | %12s | %9s | %5s | %2s | %4s | %3s | %14s | %25s | %25s | %25s",
+                             "OVERLAY",   "-",  "-",  "-",  "-",  "-",  "-",   "-",   "-",   "-",   "-");
         }
         else {
             if (config.state == config.DECON_WIN_STATE_COLOR)
-                result.appendFormat(" %8s | %12s | %8x | %5s | %2s | %13s", "COLOR",
-                        "-", config.color, "-", "-", "-");
+                result.appendFormat(" %8s | %12s | %9x | %5s | %2s | %4s | %3s | %14s", "COLOR",
+                        "-", config.color, "-", "-", "-", "-", "-");
             else
-                result.appendFormat(" %8s | %12" PRIxPTR " | %8s | %5x | %2x | %13s",
+                result.appendFormat(" %8s | %12" PRIxPTR " | %9s | %5x | %2x | %4d | %3d | %14s",
                         mLastFbWindow == i ? "FB" : "OVERLAY",
                         intptr_t(mLastHandles[i]),
-                        "-", config.blending, config.plane_alpha, deconFormat2str(config.format));
+                        "-", config.blending, config.plane_alpha, !!config.protection,
+                        config.idma_type, deconFormat2str(config.format));
 
-            result.appendFormat(" | [%5d,%5d] | [%5u,%5u]", config.dst.x, config.dst.y,
+            result.appendFormat(" | [%5d,%5d,%5u,%5u]", config.src.x, config.src.y,
+                    config.src.w, config.src.h);
+
+            result.appendFormat(" | [%5d,%5d,%5u,%5u]", config.dst.x, config.dst.y,
                     config.dst.w, config.dst.h);
+
+            result.appendFormat(" | [%5d,%5d,%5u,%5u]", config.transparent_area.x, config.transparent_area.y,
+                    config.transparent_area.w, config.transparent_area.h);
         }
         if (mLastMPPMap[i].internal_mpp.type == -1) {
             result.appendFormat(" | [%2s,%2s]", "-", "-");
@@ -2205,30 +2219,46 @@ void ExynosDisplay::skipStaticLayers(hwc_display_contents_1_t* contents)
 
 void ExynosDisplay::dumpMPPs(android::String8& result)
 {
-    result.appendFormat("displayType(%d)\n", mType);
-    result.appendFormat("Internal MPPs number: %zu\n", mInternalMPPs.size());
-    result.append(
-            " mType | mIndex | mState \n"
-            "-------+--------+-----------\n");
-        //    5____ | 6_____ | 9________ \n
+    size_t num_mpp_units;
 
-    for (size_t i = 0; i < mInternalMPPs.size(); i++) {
-        ExynosMPPModule* internalMPP = mInternalMPPs[i];
-        result.appendFormat(" %5d | %6d | %9d \n",
-                internalMPP->mType, internalMPP->mIndex, internalMPP->mState);
+    num_mpp_units = sizeof(AVAILABLE_INTERNAL_MPP_UNITS) / sizeof(exynos_mpp_t);
+    result.append("\n");
+    result.appendFormat("Internal MPPs: %zu (%zu)\n", num_mpp_units, mInternalMPPs.size());
+    result.append(
+        " mType | mIndex | mState \n"
+        "-------+--------+-----------\n");
+    //    5____ | 6_____ | 9________ \n
+
+    for (size_t i = 0; i < num_mpp_units; i++) {
+        if (i < mInternalMPPs.size()) {
+            ExynosMPPModule* mpp = mInternalMPPs[i];
+            result.appendFormat(" %5d | %6d | %9d \n",
+                    mpp->mType, mpp->mIndex, mpp->mState);
+        } else {
+            exynos_mpp_t mpp = AVAILABLE_INTERNAL_MPP_UNITS[i];
+            result.appendFormat(" %5d | %6d | %9s \n",
+                    mpp.type, mpp.index, "-");
+        }
     }
 
+    num_mpp_units = sizeof(AVAILABLE_EXTERNAL_MPP_UNITS) / sizeof(exynos_mpp_t);
     result.append("\n");
-    result.appendFormat("External MPPs number: %zu\n", mExternalMPPs.size());
+    result.appendFormat("External MPPs: %zu (%zu)\n", num_mpp_units, mExternalMPPs.size());
     result.append(
-            " mType | mIndex | mState \n"
-            "-------+--------+-----------\n");
-        //    5____ | 6_____ | 9________ \n
+        " mType | mIndex | mState \n"
+        "-------+--------+-----------\n");
+    //    5____ | 6_____ | 9________ \n
 
-    for (size_t i = 0; i < mExternalMPPs.size(); i++) {
-        ExynosMPPModule* internalMPP = mExternalMPPs[i];
-        result.appendFormat(" %5d | %6d | %9d \n",
-                internalMPP->mType, internalMPP->mIndex, internalMPP->mState);
+    for (size_t i = 0; i < num_mpp_units; i++) {
+        if (i < mExternalMPPs.size()) {
+            ExynosMPPModule* mpp = mExternalMPPs[i];
+            result.appendFormat(" %5d | %6d | %9d \n",
+                    mpp->mType, mpp->mIndex, mpp->mState);
+        } else {
+            exynos_mpp_t mpp = AVAILABLE_EXTERNAL_MPP_UNITS[i];
+            result.appendFormat(" %5d | %6d | %9s \n",
+                    mpp.type, mpp.index, "-");
+        }
     }
 }
 
