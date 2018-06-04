@@ -819,9 +819,7 @@ void exynos5_dump(hwc_composer_device_1* dev, char *buff, int buff_len)
 
     android::String8 result;
 
-    result.appendFormat("\n  hdmi_enabled=%u\n", pdev->externalDisplay->mEnabled);
-    if (pdev->externalDisplay->mEnabled)
-        result.appendFormat("    w=%u, h=%u\n", pdev->externalDisplay->mXres, pdev->externalDisplay->mYres);
+    result.appendFormat("\n");
 
     result.append("Primary device's config information\n");
     pdev->primaryDisplay->dump(result);

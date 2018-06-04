@@ -565,16 +565,15 @@ void ExynosDisplay::dupFence(int fence, hwc_display_contents_1_t *contents)
 void ExynosDisplay::dump(android::String8& result)
 {
     result.appendFormat("\n", mType);
-    result.appendFormat("    type            = %d\n", mType);
+    result.appendFormat("    type               = %d\n", mType);
 #if defined(USES_SINGLE_DECON) || defined(USES_TWO_DECON)
-    result.appendFormat("    dual display    = %s\n", mDebugDualDisplayDisabled ? "true" : "false");
+    result.appendFormat("    dual display       = %s\n", mDebugDualDisplayDisabled ? "true" : "false");
 #endif
-    result.appendFormat("    winupdate       = %s\n", mDebugWinupdateEnabled ? "true" : "false");
-    result.appendFormat("    num hw windows  = %d\n", NUM_HW_WINDOWS);
-    result.appendFormat("    max hw overlays = %d\n", mDebugMaxHwOverlays);
+    result.appendFormat("    winupdate          = %s\n", mDebugWinupdateEnabled ? "true" : "false");
+    result.appendFormat("    num hw windows     = %d\n", NUM_HW_WINDOWS);
+    result.appendFormat("    max hw overlays    = %d\n", mDebugMaxHwOverlays);
+    result.appendFormat("    last fb window     = %d\n", mLastFbWindow);
     result.appendFormat("\n", mType);
-
-    result.appendFormat("Primary device's window information\n", mType);
 
     result.append(
             "   type   |    handle    |   color   | blend | pa | prot | dma |     format     |     source (x,y,w,h)      |   destination (x,y,w,h)   |   transparent (x,y,w,h)   | intMPP  | extMPP \n"
@@ -684,9 +683,9 @@ void ExynosDisplay::dumpLayerInfo(android::String8& result)
 {
     if (!mLayerInfos.isEmpty()) {
         result.append(
-                "    type    | CheckOverlayFlag | CheckMPPFlag | Comp | mWinIndex | mDmaType |   mIntMPP |  mExtMPP \n"
-                "------------+------------------+--------------+------+-----------+----------+-----------+----------\n");
-    //            10________ |         8_______ |     8_______ | 3__  | 9________ | 8_______ | [3__, 2_] | [3__, 2_]\n"
+                "    type    |    handle    | CheckOverlayFlag | CheckMPPFlag | Comp | mWinIndex | mDmaType |   mIntMPP |  mExtMPP \n"
+                "------------+--------------+------------------+--------------+------+-----------+----------+-----------+----------\n");
+    //            10________ | 12__________ |         8_______ |     8_______ | 3__  | 9________ | 8_______ | [3__, 2_] | [3__, 2_]\n"
         for (size_t i = 0; i < mLayerInfos.size(); i++) {
             unsigned int type = mLayerInfos[i]->compositionType;
             static char const* compositionTypeName[] = {
@@ -701,8 +700,17 @@ void ExynosDisplay::dumpLayerInfo(android::String8& result)
             if (type >= NELEM(compositionTypeName))
                 type = NELEM(compositionTypeName) - 1;
             result.appendFormat(
-                    " %10s |       0x%8x |   0x%8x |    %1s | %9d | %8d",
-                    compositionTypeName[type],
+                    " %10s",
+                    compositionTypeName[type]);
+
+            if (mLayerInfos[i]->mWindowIndex < NUM_HW_WINDOWS && mLastHandles[i]) {
+                result.appendFormat( " | %12" PRIxPTR, intptr_t(mLastHandles[i]));
+            } else {
+                result.appendFormat( " | %12s", "-");
+            }
+
+            result.appendFormat(
+                    " |       0x%8x |   0x%8x |    %1s | %9d | %8d",
                     mLayerInfos[i]->mCheckOverlayFlag, mLayerInfos[i]->mCheckMPPFlag,
                     mLayerInfos[i]->mCompressed ? "Y" : "N",
                     mLayerInfos[i]->mWindowIndex, mLayerInfos[i]->mDmaType);
@@ -718,6 +726,7 @@ void ExynosDisplay::dumpLayerInfo(android::String8& result)
             else {
                 result.appendFormat(" | [%3s, %2d]", mLayerInfos[i]->mExternalMPP->getName().string(), mLayerInfos[i]->mExternalMPP->mIndex);
             }
+
             result.append("\n");
         }
     }
