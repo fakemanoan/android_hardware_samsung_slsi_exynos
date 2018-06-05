@@ -2263,45 +2263,68 @@ void ExynosDisplay::skipStaticLayers(hwc_display_contents_1_t* contents)
 void ExynosDisplay::dumpMPPs(android::String8& result)
 {
     size_t num_mpp_units;
+    int inUseTracked = 0;
 
     num_mpp_units = sizeof(AVAILABLE_INTERNAL_MPP_UNITS) / sizeof(exynos_mpp_t);
     result.append("\n");
-    result.appendFormat("Internal MPPs: %zu (%zu)\n", num_mpp_units, mInternalMPPs.size());
+    result.appendFormat("Internal MPPs: %zu (used: %zu)\n", num_mpp_units, mInternalMPPs.size());
     result.append(
         " mType | mIndex | mState \n"
         "-------+--------+-----------\n");
     //    5____ | 6_____ | 9________ \n
 
+    inUseTracked = 0;
     for (size_t i = 0; i < num_mpp_units; i++) {
-        if (i < mInternalMPPs.size()) {
-            ExynosMPPModule* mpp = mInternalMPPs[i];
-            result.appendFormat(" %5d | %6d | %9d \n",
-                    mpp->mType, mpp->mIndex, mpp->mState);
-        } else {
-            exynos_mpp_t mpp = AVAILABLE_INTERNAL_MPP_UNITS[i];
-            result.appendFormat(" %5d | %6d | %9s \n",
-                    mpp.type, mpp.index, "-");
+        exynos_mpp_t mpp = AVAILABLE_INTERNAL_MPP_UNITS[i];
+        result.appendFormat(" %5d | %6d", mpp.type, mpp.index);
+
+        bool inUse = false;
+        for (size_t j = 0; j < mInternalMPPs.size(); j++) {
+            if (mpp.type == mInternalMPPs[j]->mType && mpp.index == mInternalMPPs[j]->mIndex
+                    && inUseTracked < mInternalMPPs.size()) {
+                result.appendFormat(" | %9d", mInternalMPPs[j]->mState);
+                inUse = true;
+                inUseTracked++;
+                break;
+            }
         }
+
+        if (!inUse) {
+            result.appendFormat(" | %9s", "-");
+        }
+
+        result.appendFormat("\n");
     }
 
     num_mpp_units = sizeof(AVAILABLE_EXTERNAL_MPP_UNITS) / sizeof(exynos_mpp_t);
     result.append("\n");
-    result.appendFormat("External MPPs: %zu (%zu)\n", num_mpp_units, mExternalMPPs.size());
+    result.appendFormat("External MPPs: %zu (used: %zu)\n", num_mpp_units, mExternalMPPs.size());
     result.append(
         " mType | mIndex | mState \n"
         "-------+--------+-----------\n");
     //    5____ | 6_____ | 9________ \n
 
+    inUseTracked = 0;
     for (size_t i = 0; i < num_mpp_units; i++) {
-        if (i < mExternalMPPs.size()) {
-            ExynosMPPModule* mpp = mExternalMPPs[i];
-            result.appendFormat(" %5d | %6d | %9d \n",
-                    mpp->mType, mpp->mIndex, mpp->mState);
-        } else {
-            exynos_mpp_t mpp = AVAILABLE_EXTERNAL_MPP_UNITS[i];
-            result.appendFormat(" %5d | %6d | %9s \n",
-                    mpp.type, mpp.index, "-");
+        exynos_mpp_t mpp = AVAILABLE_EXTERNAL_MPP_UNITS[i];
+        result.appendFormat(" %5d | %6d", mpp.type, mpp.index);
+
+        bool inUse = false;
+        for (size_t j = 0; j < mExternalMPPs.size(); j++) {
+            if (mpp.type == mExternalMPPs[j]->mType && mpp.index == mExternalMPPs[j]->mIndex
+                    && inUseTracked < mExternalMPPs.size()) {
+                result.appendFormat(" | %9d", mExternalMPPs[j]->mState);
+                inUse = true;
+                inUseTracked++;
+                break;
+            }
         }
+
+        if (!inUse) {
+            result.appendFormat(" | %9s", "-");
+        }
+
+        result.appendFormat("\n");
     }
 }
 
