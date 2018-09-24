@@ -862,6 +862,7 @@ static ExynosVideoErrorType MFC_Encoder_Set_EncParam (
             ext_ctrls.count += 1;
         }
 #endif
+#ifdef V4L2_CID_MPEG_VIDEO_H264_MIN_QP_P
         /* optional : if these are not set, set value are same as I frame */
         if (pCtx->videoInstInfo.specificInfo.enc.bQpRangePBSupport == VIDEO_TRUE) {
             i = ext_ctrls.count;
@@ -876,6 +877,7 @@ static ExynosVideoErrorType MFC_Encoder_Set_EncParam (
 
             ext_ctrls.count += 4;
         }
+#endif
         break;
     }
 
@@ -962,7 +964,7 @@ static ExynosVideoErrorType MFC_Encoder_Set_EncParam (
             break;
         }
         ext_ctrls.count = MPEG4_CTRL_NUM;
-
+#ifdef V4L2_CID_MPEG_VIDEO_MPEG4_MIN_QP_P
         /* optional : if these are not set, set value are same as I frame */
         if (pCtx->videoInstInfo.specificInfo.enc.bQpRangePBSupport == VIDEO_TRUE) {
             i = ext_ctrls.count;
@@ -977,6 +979,7 @@ static ExynosVideoErrorType MFC_Encoder_Set_EncParam (
 
             ext_ctrls.count += 4;
         }
+#endif
         break;
     }
 
@@ -1023,7 +1026,7 @@ static ExynosVideoErrorType MFC_Encoder_Set_EncParam (
             break;
         }
         ext_ctrls.count = H263_CTRL_NUM;
-
+#ifdef V4L2_CID_MPEG_VIDEO_H263_MIN_QP_P
         /* optional : if these are not set, set value are same as I frame */
         if (pCtx->videoInstInfo.specificInfo.enc.bQpRangePBSupport == VIDEO_TRUE) {
             i = ext_ctrls.count;
@@ -1034,6 +1037,7 @@ static ExynosVideoErrorType MFC_Encoder_Set_EncParam (
 
             ext_ctrls.count += 2;
         }
+#endif
         break;
     }
 
@@ -1128,7 +1132,7 @@ static ExynosVideoErrorType MFC_Encoder_Set_EncParam (
 
             ext_ctrls.count += 3;
         }
-
+#ifdef V4L2_CID_MPEG_VIDEO_VP8_MIN_QP_P
         /* optional : if these are not set, set value are same as I frame */
         if (pCtx->videoInstInfo.specificInfo.enc.bQpRangePBSupport == VIDEO_TRUE) {
             i = ext_ctrls.count;
@@ -1139,6 +1143,7 @@ static ExynosVideoErrorType MFC_Encoder_Set_EncParam (
 
             ext_ctrls.count += 2;
         }
+#endif
         break;
     }
 #ifdef USE_HEVCENC_SUPPORT
@@ -1278,7 +1283,7 @@ static ExynosVideoErrorType MFC_Encoder_Set_EncParam (
         ext_ctrl[52].value = (2 << 16 | 29);
         ext_ctrls.count = HEVC_CTRL_NUM;
 
-#ifdef CID_SUPPORT
+#if defined(CID_SUPPORT) && defined(V4L2_CID_MPEG_VIDEO_HEVC_HIERARCHICAL_CODING_LAYER_BIT0)
         if (pCtx->videoInstInfo.specificInfo.enc.bTemporalSvcSupport == VIDEO_TRUE) {
             i = ext_ctrls.count;
             ext_ctrl[i].id         = V4L2_CID_MPEG_VIDEO_HEVC_HIERARCHICAL_CODING_LAYER_BIT0;
@@ -1307,7 +1312,7 @@ static ExynosVideoErrorType MFC_Encoder_Set_EncParam (
             ext_ctrls.count += 1;
         }
 #endif
-
+#ifdef V4L2_CID_MPEG_VIDEO_HEVC_MIN_QP_P
         /* optional : if these are not set, set value are same as I frame */
         if (pCtx->videoInstInfo.specificInfo.enc.bQpRangePBSupport == VIDEO_TRUE) {
             i = ext_ctrls.count;
@@ -1322,6 +1327,7 @@ static ExynosVideoErrorType MFC_Encoder_Set_EncParam (
 
             ext_ctrls.count += 4;
         }
+#endif
         break;
     }
 #endif
@@ -1631,7 +1637,7 @@ static ExynosVideoErrorType MFC_Encoder_Set_QuantizationRange(
 
         values[0][0] = GET_H264_QP_VALUE(qpRange.QpMin_I);
         values[0][1] = GET_H264_QP_VALUE(qpRange.QpMax_I);
-
+#ifdef V4L2_CID_MPEG_VIDEO_H264_MIN_QP_P
         if (pCtx->videoInstInfo.specificInfo.enc.bQpRangePBSupport == VIDEO_TRUE) {
             cids[1][0] = V4L2_CID_MPEG_VIDEO_H264_MIN_QP_P;
             cids[1][1] = V4L2_CID_MPEG_VIDEO_H264_MAX_QP_P;
@@ -1643,6 +1649,7 @@ static ExynosVideoErrorType MFC_Encoder_Set_QuantizationRange(
             values[2][0] = GET_H264_QP_VALUE(qpRange.QpMin_B);
             values[2][1] = GET_H264_QP_VALUE(qpRange.QpMax_B);
         }
+#endif
         break;
     }
     case VIDEO_CODING_MPEG4:
@@ -1658,7 +1665,7 @@ static ExynosVideoErrorType MFC_Encoder_Set_QuantizationRange(
 
         values[0][0] = GET_MPEG4_QP_VALUE(qpRange.QpMin_I);
         values[0][1] = GET_MPEG4_QP_VALUE(qpRange.QpMax_I);
-
+#ifdef V4L2_CID_MPEG_VIDEO_MPEG4_MIN_QP_P
         if (pCtx->videoInstInfo.specificInfo.enc.bQpRangePBSupport == VIDEO_TRUE) {
             cids[1][0] = V4L2_CID_MPEG_VIDEO_MPEG4_MIN_QP_P;
             cids[1][1] = V4L2_CID_MPEG_VIDEO_MPEG4_MAX_QP_P;
@@ -1670,6 +1677,7 @@ static ExynosVideoErrorType MFC_Encoder_Set_QuantizationRange(
             values[2][0] = GET_MPEG4_QP_VALUE(qpRange.QpMin_B);
             values[2][1] = GET_MPEG4_QP_VALUE(qpRange.QpMax_B);
         }
+#endif
         break;
     }
     case VIDEO_CODING_H263:
@@ -1679,7 +1687,7 @@ static ExynosVideoErrorType MFC_Encoder_Set_QuantizationRange(
 
         values[0][0] = GET_H263_QP_VALUE(qpRange.QpMin_I);
         values[0][1] = GET_H263_QP_VALUE(qpRange.QpMax_I);
-
+#ifdef V4L2_CID_MPEG_VIDEO_H263_MIN_QP_P
         if (pCtx->videoInstInfo.specificInfo.enc.bQpRangePBSupport == VIDEO_TRUE) {
             cids[1][0] = V4L2_CID_MPEG_VIDEO_H263_MIN_QP_P;
             cids[1][1] = V4L2_CID_MPEG_VIDEO_H263_MAX_QP_P;
@@ -1687,6 +1695,7 @@ static ExynosVideoErrorType MFC_Encoder_Set_QuantizationRange(
             values[1][0] = GET_H263_QP_VALUE(qpRange.QpMin_P);
             values[1][1] = GET_H263_QP_VALUE(qpRange.QpMax_P);
         }
+#endif
         break;
     }
     case VIDEO_CODING_VP8:
@@ -1696,7 +1705,7 @@ static ExynosVideoErrorType MFC_Encoder_Set_QuantizationRange(
 
         values[0][0] = GET_VP8_QP_VALUE(qpRange.QpMin_I);
         values[0][1] = GET_VP8_QP_VALUE(qpRange.QpMax_I);
-
+#ifdef V4L2_CID_MPEG_VIDEO_VP8_MIN_QP_P
         if (pCtx->videoInstInfo.specificInfo.enc.bQpRangePBSupport == VIDEO_TRUE) {
             cids[1][0] = V4L2_CID_MPEG_VIDEO_VP8_MIN_QP_P;
             cids[1][1] = V4L2_CID_MPEG_VIDEO_VP8_MAX_QP_P;
@@ -1704,6 +1713,7 @@ static ExynosVideoErrorType MFC_Encoder_Set_QuantizationRange(
             values[1][0] = GET_VP8_QP_VALUE(qpRange.QpMin_P);
             values[1][1] = GET_VP8_QP_VALUE(qpRange.QpMax_P);
         }
+#endif
         break;
     }
 #ifdef USE_HEVCENC_SUPPORT
@@ -1720,7 +1730,7 @@ static ExynosVideoErrorType MFC_Encoder_Set_QuantizationRange(
 
         values[0][0] = GET_HEVC_QP_VALUE(qpRange.QpMin_I);
         values[0][1] = GET_HEVC_QP_VALUE(qpRange.QpMax_I);
-
+#ifdef V4L2_CID_MPEG_VIDEO_HEVC_MIN_QP_P
         if (pCtx->videoInstInfo.specificInfo.enc.bQpRangePBSupport == VIDEO_TRUE) {
             cids[1][0] = V4L2_CID_MPEG_VIDEO_HEVC_MIN_QP_P;
             cids[1][1] = V4L2_CID_MPEG_VIDEO_HEVC_MAX_QP_P;
@@ -1732,6 +1742,7 @@ static ExynosVideoErrorType MFC_Encoder_Set_QuantizationRange(
             values[2][0] = GET_HEVC_QP_VALUE(qpRange.QpMin_B);
             values[2][1] = GET_HEVC_QP_VALUE(qpRange.QpMax_B);
         }
+#endif
         break;
     }
 #endif
@@ -1861,7 +1872,7 @@ static ExynosVideoErrorType MFC_Encoder_Enable_PrependSpsPpsToIdr(void *pHandle)
             goto EXIT;
         }
         break;
-#if defined(USE_HEVCENC_SUPPORT) && defined(CID_SUPPORT)
+#if defined(USE_HEVCENC_SUPPORT) && defined(CID_SUPPORT) && defined(V4L2_CID_MPEG_VIDEO_HEVC_PREPEND_SPSPPS_TO_IDR)
     case VIDEO_CODING_HEVC:
         if (exynos_v4l2_s_ctrl(pCtx->hEnc, V4L2_CID_MPEG_VIDEO_HEVC_PREPEND_SPSPPS_TO_IDR, 1) != 0) {
             ALOGE("%s: Failed to s_ctrl", __func__);
@@ -1935,7 +1946,7 @@ static ExynosVideoErrorType MFC_Encoder_Set_LayerChange(
     case VIDEO_CODING_AVC:
         CID = V4L2_CID_MPEG_VIDEO_H264_HIERARCHICAL_CODING_LAYER_CH;
         break;
-#if defined(USE_HEVCENC_SUPPORT) && defined(CID_SUPPORT)
+#if defined(USE_HEVCENC_SUPPORT) && defined(CID_SUPPORT) && defined(V4L2_CID_MPEG_VIDEO_HEVC_HIERARCHICAL_CODING_LAYER_CH)
     case VIDEO_CODING_HEVC:
         CID = V4L2_CID_MPEG_VIDEO_HEVC_HIERARCHICAL_CODING_LAYER_CH;
         break;
