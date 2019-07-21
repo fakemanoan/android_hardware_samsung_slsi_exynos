@@ -3288,6 +3288,7 @@ bool ExynosDisplay::isSourceCropfSupported(hwc_layer_1_t layer)
     return false;
 }
 
+#if 0
 bool ExynosDisplay::checkConfigChanged(struct decon_win_config_data &lastConfigData, struct decon_win_config_data &newConfigData)
 {
     for (size_t i = 0; i <= MAX_DECON_WIN; i++) {
@@ -3310,6 +3311,13 @@ bool ExynosDisplay::checkConfigChanged(struct decon_win_config_data &lastConfigD
     }
     return false;
 }
+#else
+bool ExynosDisplay::checkConfigChanged(struct decon_win_config_data &/*lastConfigData*/, struct decon_win_config_data &/*newConfigData*/)
+{
+    /* Force this check to always return true, otherwise we have unreliable retire fences */
+    return true;
+}
+#endif
 
 void ExynosDisplay::removeIDMA(decon_idma_type idma)
 {
