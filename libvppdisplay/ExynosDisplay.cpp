@@ -758,7 +758,7 @@ int ExynosDisplay::clearDisplay()
 
 int ExynosDisplay::getCompModeSwitch()
 {
-    unsigned int tot_win_size = 0, updateFps = 0;
+    unsigned int updateFps = 0;
     unsigned int lcd_size = this->mXres * this->mYres;
     uint64_t TimeStampDiff;
     float Temp;
@@ -898,7 +898,6 @@ void ExynosDisplay::getIDMAMinSize(hwc_layer_1_t __unused &layer, int *w, int *h
 bool ExynosDisplay::isOverlaySupported(hwc_layer_1_t &layer, size_t index, bool useVPPOverlay,
         ExynosMPPModule** supportedInternalMPP, ExynosMPPModule** supportedExternalMPP)
 {
-    int mMPPIndex = 0;
     int ret = 0;
     ExynosMPPModule* transitionInternalMPP = NULL;
     private_handle_t *handle = NULL;
@@ -1009,7 +1008,7 @@ bool ExynosDisplay::isOverlaySupported(hwc_layer_1_t &layer, size_t index, bool 
             (WIDTH(extMPPOutLayer.displayFrame) % mCheckIntMPP->getCropWidthAlign(layer) != 0 ||
              HEIGHT(extMPPOutLayer.displayFrame) % mCheckIntMPP->getCropHeightAlign(layer) != 0 ||
              !(mCheckIntMPP->isFormatSupportedByMPP(handleFormat)) ||
-             !(mCheckIntMPP->isCSCSupportedByMPP(handleFormat, HAL_PIXEL_FORMAT_RGBX_8888, layer.dataSpace))))
+             !(mCheckIntMPP->isCSCSupportedByMPP(handleFormat, HAL_PIXEL_FORMAT_RGBX_8888, 1))))
             dst_format = mExternalMPPDstFormat;
 
         /* extMPPOutLayer is output of ExtMPP */
@@ -1814,7 +1813,7 @@ int ExynosDisplay::handleWindowUpdate(hwc_display_contents_1_t __unused *content
     return 1;
 }
 
-void ExynosDisplay::getLayerRegion(hwc_layer_1_t &layer, decon_win_rect &rect_area, uint32_t regionType)
+void ExynosDisplay::getLayerRegion(hwc_layer_1_t &layer __unused, decon_win_rect &rect_area, uint32_t regionType)
 {
     hwc_rect_t const *hwcRects = NULL;
     unsigned int numRects = 0;
@@ -1921,7 +1920,7 @@ int ExynosDisplay::postFrame(hwc_display_contents_1_t* contents)
         return -1;
     }
     struct decon_win_config *config = mWinData->config;
-    int win_map = 0;
+
     int tot_ovly_wins = 0;
     uint32_t rectCount = 0;
     int ret = 0;
@@ -1954,20 +1953,18 @@ int ExynosDisplay::postFrame(hwc_display_contents_1_t* contents)
 
         if ((layer.flags & HWC_SKIP_RENDERING) ||
             ((layer.compositionType == HWC_OVERLAY) &&
-             ((window_index < 0) || (window_index >= NUM_HW_WINDOWS)))) {
+             ((window_index < 0) || (window_index >= (int32_t)NUM_HW_WINDOWS)))) {
             if (layer.acquireFenceFd >= 0)
                 close(layer.acquireFenceFd);
             layer.acquireFenceFd = -1;
             layer.releaseFenceFd = -1;
 
-            if ((window_index < 0) || (window_index >= NUM_HW_WINDOWS)) {
+            if ((window_index < 0) || (window_index >= (int32_t)NUM_HW_WINDOWS)) {
                 android::String8 result;
                 DISPLAY_LOGE("window of layer %d was not assigned (window_index: %d)", i, window_index);
                 dumpContents(result, contents);
-                ALOGE(result.string());
                 result.clear();
                 dumpLayerInfo(result);
-                ALOGE(result.string());
             }
             continue;
         }
@@ -2070,13 +2067,10 @@ int ExynosDisplay::postFrame(hwc_display_contents_1_t* contents)
                     result.appendFormat("window %zu configuration:\n", i);
                     dumpConfig(config[i], result);
                 }
-                ALOGE(result.string());
                 result.clear();
                 dumpContents(result, contents);
-                ALOGE(result.string());
                 result.clear();
                 dumpLayerInfo(result);
-                ALOGE(result.string());
         }
 
         if (checkConfigChanged(*mWinData, mLastConfigData) == false) {
@@ -2121,7 +2115,6 @@ int ExynosDisplay::postFrame(hwc_display_contents_1_t* contents)
 void ExynosDisplay::skipStaticLayers(hwc_display_contents_1_t* contents)
 {
     mVirtualOverlayFlag = 0;
-    int win_map = 0;
     int fbIndex = contents->numHwLayers - 1;
 
     if (!mHwc->hwc_ctrl.skip_static_layer_mode)
@@ -2272,7 +2265,6 @@ void ExynosDisplay::determineYuvOverlay(hwc_display_contents_1_t *contents)
         ExynosMPPModule* supportedExternalMPP = NULL;
         hwc_layer_1_t &layer = contents->hwLayers[i];
         useVPPOverlayFlag = false;
-        hwc_frect_t origin;
         if (layer.handle) {
             private_handle_t *handle = private_handle_t::dynamicCast(layer.handle);
 
@@ -2569,7 +2561,6 @@ void ExynosDisplay::determineBandwidthSupport(hwc_display_contents_1_t *contents
     bool changed;
     this->mBypassSkipStaticLayer = false;
     unsigned int cannotComposeFlag = 0;
-    int internalDMAsUsed = 0;
     int retry = 0;
     int fbIndex = contents->numHwLayers - 1;
 
@@ -2960,7 +2951,6 @@ void ExynosDisplay::assignWindows(hwc_display_contents_1_t *contents)
                     }
                 } else {
                     DISPLAY_LOGD(eDebugResourceAssigning, "%u layer can't use internalDMA, isProcessingRequired(%d)", i, isProcessingRequired(layer));
-                    unsigned int dmaType = 0;
                     mLayerInfos[i]->mWindowIndex = nextWindow;
                     if (mLayerInfos[i]->mInternalMPP != NULL) {
                         mLayerInfos[i]->mInternalMPP->setDisplay(this);
@@ -3054,7 +3044,7 @@ int ExynosDisplay::postMPPM2M(hwc_layer_1_t &layer, struct decon_win_config *con
         (isFormatRgb(handle->format) ||
         (bothMPPUsed && !isFormatRgb(handle->format) &&
          exynosInternalMPP != NULL &&
-         exynosInternalMPP->isCSCSupportedByMPP(handle->format, HAL_PIXEL_FORMAT_RGBX_8888, layer.dataSpace) &&
+         exynosInternalMPP->isCSCSupportedByMPP(handle->format, HAL_PIXEL_FORMAT_RGBX_8888, 1) &&
          exynosInternalMPP->isFormatSupportedByMPP(handle->format) &&
          WIDTH(extMPPOutLayer.displayFrame) % exynosInternalMPP->getCropWidthAlign(layer) == 0 &&
          HEIGHT(extMPPOutLayer.displayFrame) % exynosInternalMPP->getCropHeightAlign(layer) == 0)))
@@ -3171,7 +3161,6 @@ bool ExynosDisplay::isBothMPPProcessingRequired(hwc_layer_1_t &layer)
                           ((dstH > srcH * maxUpscaleExt) && (dstH <= srcH * maxUpscaleExt * maxUpscaleInt));
 
     int maxDownscaleExt = mExternalMPPs[0]->getMaxDownscale(layer);
-    int maxDownscaleInt = mCheckIntMPP->getMaxDownscale(layer);
 
     needDoubleOperation |= ((dstW < srcW / maxDownscaleExt) && (dstW >= srcW / (maxDownscaleExt * maxDownscaleExt))) ||
                           ((dstH < srcH / maxDownscaleExt) && (dstH >= srcH / (maxDownscaleExt * maxDownscaleExt)));
@@ -3274,13 +3263,13 @@ bool ExynosDisplay::isBothMPPProcessingRequired(hwc_layer_1_t &layer, hwc_layer_
     return needDoubleOperation;
 }
 
-bool ExynosDisplay::isSourceCropfSupported(hwc_layer_1_t layer)
+bool ExynosDisplay::isSourceCropfSupported(hwc_layer_1_t layer __unused)
 {
+#if 0
     private_handle_t *handle = private_handle_t::dynamicCast(layer.handle);
     unsigned int bpp = formatToBpp(handle->format);
 
     /* HACK: Disable overlay if the layer have float position or size */
-#if 0
     if ((isFormatRgb(handle->format) && (bpp == 32)) ||
          isFormatYUV420(handle->format))
         return true;
