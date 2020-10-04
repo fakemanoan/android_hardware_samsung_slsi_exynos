@@ -23,9 +23,11 @@ LOCAL_C_INCLUDES := \
 	$(TOP)/hardware/samsung_slsi/exynos/include \
 	$(TOP)/hardware/samsung_slsi/exynos/libexynosutils
 
-LOCAL_SRC_FILES := libscaler.cpp libscaler-v4l2.cpp libscalerblend-v4l2.cpp libscaler-m2m1shot.cpp libscaler-swscaler.cpp
+LOCAL_SRC_FILES := libscaler.cpp libscaler-v4l2.cpp libscalerblend-v4l2.cpp libscaler-swscaler.cpp
+
 ifeq ($(BOARD_USES_SCALER_M2M1SHOT), true)
 LOCAL_CFLAGS += -DSCALER_USE_M2M1SHOT
+LOCAL_SRC_FILES += libscaler-m2m1shot.cpp
 endif
 
 # since 3.18 kernel
