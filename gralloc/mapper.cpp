@@ -138,9 +138,9 @@ static int gralloc_unmap(gralloc_module_t const* module __unused, buffer_handle_
 
     if (munmap(INT_TO_PTR(hnd->base), hnd->size) < 0) {
         ALOGE("%s :could not unmap %s %llx %d", __func__, strerror(errno),
-              hnd->base, hnd->size);
+              (long long)hnd->base, hnd->size);
     }
-    ALOGV("%s: base %llx %d %d %d %d\n", __func__, hnd->base, hnd->size,
+    ALOGV("%s: base %llx %d %d %d %d\n", __func__, (long long)hnd->base, hnd->size,
           hnd->width, hnd->height, hnd->stride);
     hnd->base = 0;
     if (hnd->fd1 >= 0) {
@@ -148,7 +148,7 @@ static int gralloc_unmap(gralloc_module_t const* module __unused, buffer_handle_
             return 0;
         if (munmap(INT_TO_PTR(hnd->base1), hnd->size1) < 0) {
             ALOGE("%s :could not unmap %s %llx %d", __func__, strerror(errno),
-                  hnd->base1, hnd->size1);
+                  (long long)hnd->base1, hnd->size1);
         }
         hnd->base1 = 0;
     }
@@ -157,7 +157,7 @@ static int gralloc_unmap(gralloc_module_t const* module __unused, buffer_handle_
             return 0;
         if (munmap(INT_TO_PTR(hnd->base2), hnd->size2) < 0) {
             ALOGE("%s :could not unmap %s %llx %d", __func__, strerror(errno),
-                  hnd->base2, hnd->size2);
+                  (long long)hnd->base2, hnd->size2);
         }
         hnd->base2 = 0;
     }
@@ -188,7 +188,7 @@ int gralloc_register_buffer(gralloc_module_t const* module,
     err = gralloc_map(module, handle);
 
     private_handle_t* hnd = (private_handle_t*)handle;
-    ALOGV("%s: base %llx %d %d %d %d\n", __func__, hnd->base, hnd->size,
+    ALOGV("%s: base %llx %d %d %d %d\n", __func__, (long long)hnd->base, hnd->size,
           hnd->width, hnd->height, hnd->stride);
 
     int ret;
@@ -216,7 +216,7 @@ int gralloc_unregister_buffer(gralloc_module_t const* module,
         return -EINVAL;
 
     private_handle_t* hnd = (private_handle_t*)handle;
-    ALOGV("%s: base %llx %d %d %d %d\n", __func__, hnd->base, hnd->size,
+    ALOGV("%s: base %llx %d %d %d %d\n", __func__, (long long)hnd->base, hnd->size,
           hnd->width, hnd->height, hnd->stride);
 
     gralloc_unmap(module, handle);
