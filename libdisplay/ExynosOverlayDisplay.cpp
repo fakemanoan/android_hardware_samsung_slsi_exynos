@@ -1090,7 +1090,7 @@ void ExynosOverlayDisplay::determineYuvOverlay(hwc_display_contents_1_t *content
 
             if (handle->flags & GRALLOC_USAGE_HW_CAMERA_MASK) {
                 mAllowedOverlays = mHwc->hwc_ctrl.max_num_ovly;
-                mHwc->hwc_ctrl.max_num_ovly = 3;
+                mHwc->hwc_ctrl.max_num_ovly = 7;
             }
 
             handleOffscreenRendering(layer, contents, i);
