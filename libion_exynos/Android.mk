@@ -21,6 +21,7 @@ LOCAL_SRC_FILES:= \
 	libion.cpp
 
 LOCAL_MODULE := libion_exynos
+LOCAL_VENDOR_MODULE := true
 
 LOCAL_MODULE_TAGS := optional
 
