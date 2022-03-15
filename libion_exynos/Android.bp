@@ -16,10 +16,10 @@ cc_library {
     name: "libion_exynos",
     proprietary: true,
     srcs: [
-        "ion.cpp",
+        "ion.c",
         "dmabuf_container.c",
     ],
-    shared_libs: ["liblog","libdmabufheap"],
+    shared_libs: ["liblog"],
     local_include_dirs: [
         "include",
     ],
