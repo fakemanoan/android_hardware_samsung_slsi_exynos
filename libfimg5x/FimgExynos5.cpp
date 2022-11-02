@@ -27,6 +27,8 @@
 
 #include "FimgExynos5.h"
 
+#pragma clang diagnostic ignored "-Wunreachable-code-loop-increment"
+
 extern pthread_mutex_t s_g2d_lock;
 
 namespace android
