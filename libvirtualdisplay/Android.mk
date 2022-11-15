@@ -18,7 +18,7 @@ include $(CLEAR_VARS)
 LOCAL_PRELINK_MODULE := false
 
 LOCAL_SHARED_LIBRARIES := liblog libutils libcutils libexynosutils libexynosv4l2 \
-                          libhwcutils libexynosdisplay libmpp libsync
+                          libhwcutils libexynosdisplay libmpp libsync libion
 
 LOCAL_CFLAGS += -DLOG_TAG=\"virtual\"
 LOCAL_CFLAGS += -DHLOG_CODE=3
@@ -44,6 +44,8 @@ LOCAL_SRC_FILES := \
 	ExynosVirtualDisplay.cpp
 
 include $(TOP)/hardware/samsung_slsi/$(TARGET_SOC)/libvirtualdisplaymodule/Android.mk
+
+LOCAL_HEADER_LIBRARIES += generated_kernel_headers
 
 LOCAL_MODULE := libvirtualdisplay
 LOCAL_VENDOR_MODULE := true
