@@ -17,7 +17,7 @@ include $(CLEAR_VARS)
 
 LOCAL_PRELINK_MODULE := false
 LOCAL_SHARED_LIBRARIES := liblog libutils libcutils libexynosutils \
-  libexynosv4l2 libsync libhwcutils libdisplay libmpp libion_exynos libdisplay
+  libexynosv4l2 libsync libhwcutils libdisplay libmpp libion_exynos libdisplay libion
 
 LOCAL_CFLAGS += -DLOG_TAG=\"virtualdisplay\"
 
