@@ -5,7 +5,7 @@
 #include "ExynosMPPModule.h"
 #include "ExynosPrimaryDisplay.h"
 #include "ExynosExternalDisplay.h"
-#if defined(USES_DUAL_DISPLAY)
+#if (defined(USES_SINGLE_DECON))||(defined(USES_TWO_DECON))
 #include "ExynosSecondaryDisplayModule.h"
 #endif
 #ifdef USES_VIRTUAL_DISPLAY
@@ -61,15 +61,15 @@ ExynosDisplayResourceManager::ExynosDisplayResourceManager(struct exynos5_hwc_co
 {
 #ifdef DISABLE_IDMA_SECURE
     mHwc->primaryDisplay->mUseSecureDMA = false;
-#if defined(USES_DUAL_DISPLAY)
+#if (defined(USES_SINGLE_DECON))||(defined(USES_TWO_DECON))
     mHwc->secondaryDisplay->mUseSecureDMA = false;
 #endif
 #else
-#if defined(USES_DUAL_DISPLAY)
+#if defined(USES_SINGLE_DECON)
     mHwc->primaryDisplay->mUseSecureDMA = false;
     mHwc->secondaryDisplay->mUseSecureDMA = true;
 #else
-    mHwc->primaryDisplay->mUseSecureDMA = true;
+    mHwc->primaryDisplay->mUseSecureDMA = false;
 #endif
 #endif
     mHwc->externalDisplay->mUseSecureDMA = false;
@@ -109,7 +109,7 @@ void ExynosDisplayResourceManager::removeUnAssignedIntMpp(ExynosMPPVector &inter
 
 void ExynosDisplayResourceManager::addExternalMpp(hwc_display_contents_1_t** contents)
 {
-#if defined(USES_DUAL_DISPLAY)
+#if (defined(USES_SINGLE_DECON))||(defined(USES_TWO_DECON))
     hwc_display_contents_1_t *fimd_contents = contents[HWC_DISPLAY_PRIMARY0];
     hwc_display_contents_1_t *fimd_contents1 = contents[HWC_DISPLAY_PRIMARY1];
 #else
@@ -122,25 +122,20 @@ void ExynosDisplayResourceManager::addExternalMpp(hwc_display_contents_1_t** con
 
     hwc_display_contents_1_t *secondary_contents = hdmi_contents;
     ExynosDisplay* secondary_display = mHwc->externalDisplay;
-
     if (mExternalMPPs.size() == 0)
         return;
 
     ExynosMPPModule* exynosMPP = (ExynosMPPModule *)mExternalMPPs[FIMD_EXT_MPP_IDX];
-    if (fimd_contents &&
-        ((mHwc->primaryDisplay->mHasDrmSurface) ||
-         (mHwc->primaryDisplay->mYuvLayers > 0) ||
-         ((fimd_contents->flags & HWC_GEOMETRY_CHANGED) == 0))) {
+    if ((fimd_contents != NULL) && ((mHwc->primaryDisplay->mHasDrmSurface) || ((fimd_contents->flags & HWC_GEOMETRY_CHANGED) == 0))) {
         mHwc->primaryDisplay->mExternalMPPs.add(exynosMPP);
     }
 
-#if defined(USES_DUAL_DISPLAY)
+#if (defined(USES_SINGLE_DECON))|(defined(USES_TWO_DECON))
     if (mHwc->hdmi_hpd == false) {
         secondary_contents = fimd_contents1;
         secondary_display = mHwc->secondaryDisplay;
     }
 #endif
-
     if (secondary_contents) {
         exynosMPP = (ExynosMPPModule *)mExternalMPPs[HDMI_EXT_MPP_IDX];
         secondary_display->mExternalMPPs.add(exynosMPP);
@@ -150,11 +145,6 @@ void ExynosDisplayResourceManager::addExternalMpp(hwc_display_contents_1_t** con
     if (virtual_contents) {
         exynosMPP = (ExynosMPPModule *)mExternalMPPs[WFD_EXT_MPP_IDX];
         mHwc->virtualDisplay->mExternalMPPs.add(exynosMPP);
-#ifdef USES_2MSC_FOR_WFD
-        /* 1st is for blending and 2nd is for scaling */
-        exynosMPP = (ExynosMPPModule *)mExternalMPPs[WFD_EXT_MPP_IDX + 1];
-        mHwc->virtualDisplay->mExternalMPPs.add(exynosMPP);
-#endif
 #ifdef USES_3MSC_FOR_WFD
         /* To prevent lack of MSC, WFD use 3 external MPPs */
         exynosMPP = (ExynosMPPModule *)mExternalMPPs[WFD_EXT_MPP_IDX + 1];
@@ -169,11 +159,33 @@ void ExynosDisplayResourceManager::addExternalMpp(hwc_display_contents_1_t** con
 
 void ExynosDisplayResourceManager::addUnAssignedIntMpp(ExynosDisplay *display)
 {
-    for (size_t i = 0; i < mInternalMPPs.size(); i++) {
-        ExynosMPPModule* exynosMPP = (ExynosMPPModule *)mInternalMPPs[i];
-        if ((exynosMPP->mState == MPP_STATE_FREE) && (exynosMPP->mCanBeUsed) && (exynosMPP->isAssignable(display)))
-            display->mInternalMPPs.add(exynosMPP);
-    }
+#if defined(USES_TWO_DECON)//assign VPP for decon_f and decon_s/decon_t separately.
+	if(mHwc->mDualDisplayFlag ||mHwc->hdmi_hpd){
+#else
+	if (mHwc->hdmi_hpd){
+#endif
+		int total = mInternalMPPs.size();
+		int available = 0,start = 0;
+		if(display->mType == EXYNOS_PRIMARY_DISPLAY){
+			available = total/2+total%2;
+			start = 0;		
+		}else{
+			available = total;
+			start = total/2+total%2;
+		}
+
+	    for (int i = start; i < available; i++) {
+	        ExynosMPPModule* exynosMPP = (ExynosMPPModule *)mInternalMPPs[i];
+	        if ((exynosMPP->mState == MPP_STATE_FREE) && (exynosMPP->mCanBeUsed) && (exynosMPP->isAssignable(display)))
+	            display->mInternalMPPs.add(exynosMPP);
+	    }
+	}else{
+		for (size_t i = 0; i < mInternalMPPs.size(); i++) {
+			ExynosMPPModule* exynosMPP = (ExynosMPPModule *)mInternalMPPs[i];
+			if ((exynosMPP->mState == MPP_STATE_FREE) && (exynosMPP->mCanBeUsed) && (exynosMPP->isAssignable(display)))
+				display->mInternalMPPs.add(exynosMPP);
+		}	
+	}
 }
 
 void ExynosDisplayResourceManager::cleanupMPPs()
@@ -240,7 +252,7 @@ void ExynosDisplayResourceManager::printDisplyInfos(size_t type)
         result.clear();
         mHwc->primaryDisplay->dumpMPPs(result);
         HDEBUGLOGD(eDebugResourceManager, "%s", result.string());
-#if defined(USES_DUAL_DISPLAY)
+#if (defined(USES_SINGLE_DECON)||defined(USES_TWO_DECON))
     } else if (type == EXYNOS_SECONDARY_DISPLAY) {
         HDEBUGLOGD(eDebugResourceManager, "Secondary display");
         result.clear();
@@ -367,7 +379,7 @@ int ExynosDisplayResourceManager::assignResources(size_t numDisplays, hwc_displa
     if (!numDisplays || !displays)
         return 0;
 
-#if defined(USES_DUAL_DISPLAY)
+#if (defined(USES_SINGLE_DECON))||(defined(USES_TWO_DECON))
     hwc_display_contents_1_t *fimd_contents = displays[HWC_DISPLAY_PRIMARY0];
     hwc_display_contents_1_t *fimd_contents1 = displays[HWC_DISPLAY_PRIMARY1];
 #else
@@ -383,14 +395,12 @@ int ExynosDisplayResourceManager::assignResources(size_t numDisplays, hwc_displa
 
     int primary_previous_drm_dma = -1;
     int secondary_previous_drm_dma = -1;
+    int virtual_previous_drm_dma = -1;
     ExynosMPPModule *previousDRMInternalMPPPrimary = NULL;
     ExynosMPPModule *previousDRMInternalMPPSecondary = NULL;
-#ifdef USES_VIRTUAL_DISPLAY
-    int virtual_previous_drm_dma = -1;
     ExynosMPPModule *previousDRMInternalMPPVirtual = NULL;
-#endif
 
-#if defined(USES_DUAL_DISPLAY)
+#if (defined(USES_SINGLE_DECON))||(defined(USES_TWO_DECON))
     if (mHwc->hdmi_hpd == false) {
         secondary_contents = fimd_contents1;
         secondary_display = mHwc->secondaryDisplay;
@@ -457,10 +467,12 @@ int ExynosDisplayResourceManager::assignResources(size_t numDisplays, hwc_displa
 
     if (secondary_contents) {
         /* It's mirror mode */
+#ifndef USES_OVERLAY_FOR_HDMI_UI_MIRROR
         if ((mHwc->hdmi_hpd == true) && fimd_contents && (fimd_contents->numHwLayers > 0) &&
             (fimd_contents->numHwLayers == secondary_contents->numHwLayers) &&
             (fimd_contents->hwLayers[0].handle == secondary_contents->hwLayers[0].handle))
             secondary_display->mForceFb = true;
+#endif
 
         handleLowPriorityLayers(secondary_contents, secondary_display);
     }

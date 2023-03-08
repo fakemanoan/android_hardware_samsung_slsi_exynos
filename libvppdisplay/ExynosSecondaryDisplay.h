@@ -13,12 +13,16 @@ class ExynosSecondaryDisplay : public ExynosDisplay {
         ~ExynosSecondaryDisplay();
         int enable();
         int disable();
+#ifdef USES_SINGLE_DECON		
         virtual int prepare(hwc_display_contents_1_t *contents);
         virtual int set(hwc_display_contents_1_t *contents);
+#endif		
 
         bool                    mEnabled;
+#if (defined(USES_SINGLE_DECON))||(defined(USES_TWO_DECON))
     protected:
         virtual void doPreProcessing(hwc_display_contents_1_t* contents);
+#endif		
 
 };
 

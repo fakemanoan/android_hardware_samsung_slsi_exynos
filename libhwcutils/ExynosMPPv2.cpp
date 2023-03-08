@@ -167,11 +167,6 @@ bool ExynosMPP::isFormatSupportedByMPP(int format)
     }
 }
 
-bool ExynosMPP::isCSCSupportedByMPP(int src_format __unused, int dst_format __unused, uint32_t dataSpace __unused)
-{
-    return true;
-}
-
 bool ExynosMPP::formatRequiresMPP(int format)
 {
     return isFormatSupportedByMPP(format) && !isFormatRgb(format);
@@ -274,10 +269,6 @@ int ExynosMPP::isProcessingSupported(hwc_layer_1_t &layer, int dst_format)
         return -eMPPUnsupportedFormat;
     else if (!isFormatSupportedByMPP(dst_format))
         return -eMPPUnsupportedFormat;
-#if 0
-    else if (!isCSCSupportedByMPP(handle->format, dst_format, layer.dataSpace))
-        return -eMPPUnsupportedCSC;
-#endif
     else if (!mCanBlend &&
               (handle->format == HAL_PIXEL_FORMAT_RGBA_8888 || handle->format == HAL_PIXEL_FORMAT_BGRA_8888) &&
               layer.blending != HWC_BLENDING_NONE)
@@ -483,6 +474,9 @@ void ExynosMPP::setupSrc(exynos_mpp_img &srcImg, hwc_layer_1_t &layer)
     srcImg.drmMode = !!(getDrmMode(srcHandle->flags) == SECURE_DRM);
     srcImg.acquireFenceFd = layer.acquireFenceFd;
     srcImg.mem_type = MPP_MEM_DMABUF;
+#ifdef USES_VR_FRONT_BUFFER
+    srcImg.use_sync = 1;
+#endif
 }
 
 bool ExynosMPP::setupDoubleOperation(exynos_mpp_img &srcImg, exynos_mpp_img &midImg, hwc_layer_1_t &layer)
@@ -534,14 +528,14 @@ bool ExynosMPP::setupDoubleOperation(exynos_mpp_img &srcImg, exynos_mpp_img &mid
             }
 
             if (WIDTH(layer.sourceCropf) * maxUpscale  < midW)
-                midImg.w = ALIGN(midW / maxUpscale, getDstWidthAlign(midFormat));
+                midImg.w = ALIGN(WIDTH(layer.displayFrame) / maxUpscale, getDstWidthAlign(midFormat));
             else if (WIDTH(layer.sourceCropf) > midW * maxDownscale)
                 midImg.w = ALIGN((int)ceilf((double)WIDTH(layer.sourceCropf) / (double)maxDownscale), getDstWidthAlign(midFormat));
             else
                 midImg.w = midW;
 
             if (HEIGHT(layer.sourceCropf) * maxUpscale < midH)
-                midImg.h = ALIGN(midH / maxUpscale, getDstHeightAlign(midFormat));
+                midImg.h = ALIGN(HEIGHT(layer.displayFrame) / maxUpscale, getDstHeightAlign(midFormat));
             else if (HEIGHT(layer.sourceCropf) > midH * maxDownscale)
                 midImg.h = ALIGN((int)ceilf((double)HEIGHT(layer.sourceCropf) / (double)maxDownscale), getDstHeightAlign(midFormat));
             else
@@ -601,6 +595,10 @@ void ExynosMPP::setupDst(exynos_mpp_img &srcImg, exynos_mpp_img &dstImg,
         dstImg.narrowRgb = 0;
     else
         dstImg.narrowRgb = !isFormatRgb(srcHandle->format);
+
+#ifdef USES_VR_FRONT_BUFFER
+    dstImg.use_sync = 1;
+#endif
 }
 
 void ExynosMPP::setupBlendCfg(exynos_mpp_img __unused &srcImg, exynos_mpp_img &dstImg,
@@ -628,8 +626,6 @@ size_t ExynosMPP::getBufferType(uint32_t usage)
         return MPP_BUFFER_VIDEO_EXT;
     else if (getDrmMode(usage) == SECURE_DRM)
         return MPP_BUFFER_SECURE_DRM;
-    else if (getDrmMode(usage) == NORMAL_DRM)
-        return MPP_BUFFER_NORMAL_DRM;
     else
         return MPP_BUFFER_NORMAL;
 }
@@ -641,13 +637,9 @@ int ExynosMPP::getBufferUsage(private_handle_t *srcHandle)
             GRALLOC_USAGE_NOZEROED |
             GRALLOC_USAGE_HW_COMPOSER;
 
-    if (getDrmMode(srcHandle->flags) == SECURE_DRM) {
+    if (getDrmMode(srcHandle->flags) == SECURE_DRM)
         usage |= GRALLOC_USAGE_PROTECTED;
-        usage &= ~GRALLOC_USAGE_PRIVATE_NONSECURE;
-    } else if (getDrmMode(srcHandle->flags) == NORMAL_DRM) {
-        usage |= GRALLOC_USAGE_PROTECTED;
-        usage |= GRALLOC_USAGE_PRIVATE_NONSECURE;
-    }
+
     if (srcHandle->flags & GRALLOC_USAGE_VIDEO_EXT)
         usage |= GRALLOC_USAGE_VIDEO_EXT;
 
@@ -739,7 +731,7 @@ int ExynosMPP::reallocateBuffers(private_handle_t *srcHandle, exynos_mpp_img &ds
                     strerror(-ret));
             return ret;
         }
-        HDEBUGLOGD(eDebugMPP, "%zu dst buffer is allocated, mAllocatedBufferNum(%d)", mCurrentBuf, mAllocatedBufferNum);
+        HDEBUGLOGD(eDebugMPP, "%d dst buffer is allocated, mAllocatedBufferNum(%d)", mCurrentBuf, mAllocatedBufferNum);
         mAllocatedBufferNum++;
     }
 
@@ -751,7 +743,7 @@ int ExynosMPP::reallocateBuffers(private_handle_t *srcHandle, exynos_mpp_img &ds
                     midImg.w, midImg.h, strerror(-ret));
             return ret;
         }
-        HDEBUGLOGD(eDebugMPP, "%zu mid buffer is allocated, mAllocatedBufferNum(%d)", mCurrentBuf, mAllocatedMidBufferNum);
+        HDEBUGLOGD(eDebugMPP, "%d mid buffer is allocated, mAllocatedBufferNum(%d)", mCurrentBuf, mAllocatedMidBufferNum);
         mAllocatedMidBufferNum++;
     }
 
@@ -849,14 +841,15 @@ int ExynosMPP::processM2M(hwc_layer_1_t &layer, int dstFormat, hwc_frect_t *sour
     ATRACE_CALL();
     HDEBUGLOGD(eDebugMPP, "configuring mType(%u) mIndex(%u) for memory-to-memory", mType, mIndex);
 
-#ifdef USES_VIRTUAL_DISPLAY
     alloc_device_t* allocDevice = mAllocDevice;
-#endif
-
     private_handle_t *srcHandle = private_handle_t::dynamicCast(layer.handle);
     buffer_handle_t dstBuf;
     private_handle_t *dstHandle;
+    buffer_handle_t midBuf;
+    private_handle_t *midHandle;
     int ret = 0;
+    int dstAlign;
+    bool reconfigure;
 
     exynos_mpp_img srcImg, dstImg;
     memset(&srcImg, 0, sizeof(srcImg));
@@ -880,8 +873,19 @@ int ExynosMPP::processM2M(hwc_layer_1_t &layer, int dstFormat, hwc_frect_t *sour
     }
 
     bool needDoubleOperation = setupDoubleOperation(srcImg, midImg, layer);
+#ifdef USES_VR_FRONT_BUFFER
+	if (srcHandle->flags & GRALLOC_USAGE_VR_SINGLE_BUFFER_USAGE){
+		reconfigure = true;
 
-    bool reconfigure = isSrcConfigChanged(srcImg, mSrcConfig) ||
+		if (layer.acquireFenceFd < 0)
+			srcImg.use_sync = 0;
+
+		if (mDstBufFence[mCurrentBuf] < 0)
+			dstImg.use_sync = 0;
+	}
+	else
+#endif
+    reconfigure = isSrcConfigChanged(srcImg, mSrcConfig) ||
             isDstConfigChanged(dstImg, mDstConfig);
 
     mDstRealloc = mDstConfig.fw <= 0 ||
@@ -901,8 +905,6 @@ int ExynosMPP::processM2M(hwc_layer_1_t &layer, int dstFormat, hwc_frect_t *sour
         dstImg.y = mDisplay->mHwc->mVirtualDisplayRect.top;
         dstImg.w = mDisplay->mHwc->mVirtualDisplayRect.width;
         dstImg.h = mDisplay->mHwc->mVirtualDisplayRect.height;
-        /* WFD can use MSC for blending or scaling. recofigure is required on WFD */
-        reconfigure = true;
     }
 #endif
 
@@ -1016,6 +1018,7 @@ int ExynosMPP::processM2M(hwc_layer_1_t &layer, int dstFormat, hwc_frect_t *sour
             ALOGE("failed to stop mType(%u) mIndex(%u)", mType, mIndex);
             goto err_gsc_config;
         }
+
         ret = setCSCProperty(mMPPHandle, 0, !midImg.narrowRgb, 1);
         ret = configMPP(mMPPHandle, &srcImg, &midImg);
         if (ret < 0) {
@@ -1039,6 +1042,7 @@ int ExynosMPP::processM2M(hwc_layer_1_t &layer, int dstFormat, hwc_frect_t *sour
         }
 
         midImg.acquireFenceFd = midImg.releaseFenceFd;
+
         ret = setCSCProperty(mMPPHandle, 0, !dstImg.narrowRgb, 1);
         ret = configMPP(mMPPHandle, &midImg, &dstImg);
         if (ret < 0) {
@@ -1123,6 +1127,7 @@ int ExynosMPP::processM2MWithB(hwc_layer_1_t &layer1, hwc_layer_1_t &layer2, int
     private_handle_t *dstHandle;
     struct SrcBlendInfo srcblendinfo;
     int ret = 0;
+    int dstAlign;
 
     exynos_mpp_img srcImg, dstImg;
     memset(&srcImg, 0, sizeof(srcImg));
@@ -1130,102 +1135,21 @@ int ExynosMPP::processM2MWithB(hwc_layer_1_t &layer1, hwc_layer_1_t &layer2, int
     memset(&srcblendinfo, 0, sizeof(srcblendinfo));
 
     setupSrc(srcImg, layer1);
-
-    exynos_mpp_img midImg;
-    memset(&midImg, 0, sizeof(midImg));
-
-    bool needDoubleOperation = setupDoubleOperation(srcImg, midImg, layer1);
-    HDEBUGLOGD(eDebugMPP, "processM2MWithB(), needDoubleOperation %d", needDoubleOperation);
-    /* Only DRM use double operation */
-    if (needDoubleOperation) {
-        if (mMPPHandle != NULL){
-            stopMPP(mMPPHandle);
-            destroyMPP(mMPPHandle);
-        }
-        mMPPHandle = createMPP( mType, GSC_M2M_MODE, GSC_DUMMY, (getDrmMode(srcHandle->flags) != NO_DRM));
-        bool reconfigure = isDstConfigChanged(midImg, mMidConfig);
-        if (reconfigure) {
-            int dstStride;
-            if (mMidBuffers[0] != NULL) {
-                android::Mutex::Autolock lock(mMutex);
-                deleteBufferInfo buffInfo;
-                buffInfo.buffer = mMidBuffers[0];
-                buffInfo.bufFence = mMidBufFence[0];
-                mFreedBuffers.push_back(buffInfo);
-                mBufferFreeThread->mCondition.signal();
-                mMidBuffers[0] = NULL;
-                mMidBufFence[0] = -1;
-            }
-            if (mMidBufFence[0] >= 0) {
-                close(mMidBufFence[0]);
-            }
-            mMidBufFence[0] = -1;
-            int usage = getBufferUsage(srcHandle);
-            ret = allocDevice->alloc(allocDevice, midImg.x + midImg.w, midImg.y + midImg.h,
-                    HAL_PIXEL_FORMAT_EXYNOS_YCbCr_420_SPN, usage, &mMidBuffers[0],
-                    &dstStride);
-            if (ret < 0) {
-                ALOGE("failed to allocate intermediate buffer(%dx%d): %s", midImg.w, midImg.h,
-                        strerror(-ret));
-                goto err_alloc;
-            }
-        }
-
-        midImg.acquireFenceFd = -1;
-        midImg.releaseFenceFd = -1;
-        private_handle_t *midHandle = private_handle_t::dynamicCast(mMidBuffers[0]);
-        midImg.fw = midHandle->stride;
-        midImg.fh = midHandle->vstride;
-        midImg.yaddr = midHandle->fd;
-        if (isFormatYCrCb(midHandle->format)) {
-            midImg.uaddr = midHandle->fd2;
-            midImg.vaddr = midHandle->fd1;
-        } else {
-            midImg.uaddr = midHandle->fd1;
-            midImg.vaddr = midHandle->fd2;
-        }
-
-        ret = setCSCProperty(mMPPHandle, 0, !midImg.narrowRgb, 1);
-
-        HDEBUGLOGD(eDebugMPP, "src configuration:\n");
-        dumpMPPImage(eDebugMPP, srcImg);
-        HDEBUGLOGD(eDebugMPP, "mid configuration:\n");
-        dumpMPPImage(eDebugMPP, midImg);
-
-        ret = configMPP(mMPPHandle, &srcImg, &midImg);
-        if (ret < 0) {
-            ALOGE("failed to configure mType(%u) mIndex(%u)", mType, mIndex);
-            goto err_gsc_config;
-        }
-
-        ret = runMPP(mMPPHandle, &srcImg, &midImg);
-        if (ret < 0) {
-            ALOGE("failed to run mType(%u) mIndex(%d)", mType, mIndex);
-            goto err_gsc_config;
-        }
-
-        layer1.releaseFenceFd = srcImg.releaseFenceFd;
-        int releaseFenceFd = midImg.releaseFenceFd;
-        midImg.releaseFenceFd = -1;
-        memcpy(&srcImg, &midImg, sizeof(exynos_mpp_img));
-        srcImg.acquireFenceFd = releaseFenceFd;
-        srcImg.releaseFenceFd = -1;
-
-        if (mMPPHandle != NULL){
-            stopMPP(mMPPHandle);
-            destroyMPP(mMPPHandle);
-            mMPPHandle = NULL;
-        }
-    }
-
     /* if src1 is one plane NV12 format, uaddr should be src2's address.
        if src1 is two plane NV12 format, vaddr should be src2's address. */
-    if (srcImg.uaddr == (unsigned long)-1)
+    if (srcImg.uaddr == -1)
         srcImg.uaddr = src2Handle->fd;
     else
         srcImg.vaddr = src2Handle->fd;
 
     setupDst(srcImg, dstImg, dstFormat, layer1);
+
+    /* mMPPHandle should be created again as prev is for csc */
+    if (mMPPHandle != NULL){
+        stopMPP(mMPPHandle);
+        destroyMPP(mMPPHandle);
+        mMPPHandle = NULL;
+    }
 
     dstImg.x = mDisplay->mHwc->mVirtualDisplayRect.left;
     dstImg.y = mDisplay->mHwc->mVirtualDisplayRect.top;
@@ -1247,13 +1171,16 @@ int ExynosMPP::processM2MWithB(hwc_layer_1_t &layer1, hwc_layer_1_t &layer2, int
 
     setupBlendCfg(srcImg, dstImg, layer1, layer2, srcblendinfo);
 
-    if (mMPPHandle == NULL){
-        mMPPHandle = createBlendMPP( mType, GSC_M2M_MODE, GSC_DUMMY, (getDrmMode(srcHandle->flags) != NO_DRM));
+    mMPPHandle = createBlendMPP( mType, GSC_M2M_MODE, GSC_DUMMY, (getDrmMode(srcHandle->flags) != NO_DRM));
+    if (!mMPPHandle) {
+        ALOGE("failed to create BlendMpp scaler handle");
+        ret = -1;
+        goto err_gsc_config;
     }
 
-    if (!mMPPHandle) {
-        ALOGE("BlendMpp is null");
-        ret = -1;
+    ret = stopMPP(mMPPHandle);
+    if (ret < 0) {
+        ALOGE("failed to stop mType(%u) mIndex(%u)", mType, mIndex);
         goto err_gsc_config;
     }
 
@@ -1265,8 +1192,8 @@ int ExynosMPP::processM2MWithB(hwc_layer_1_t &layer1, hwc_layer_1_t &layer2, int
     dumpBlendMPPImage(eDebugMPP, srcblendinfo);
 
     ret = setCSCProperty(mMPPHandle, 0, !dstImg.narrowRgb, 1);
-
     ret = configBlendMpp(mMPPHandle, &srcImg, &dstImg, &srcblendinfo);
+
     if (ret < 0) {
         ALOGE("failed to configure mType(%u) mIndex(%u)", mType, mIndex);
         goto err_gsc_config;
@@ -1282,58 +1209,24 @@ int ExynosMPP::processM2MWithB(hwc_layer_1_t &layer1, hwc_layer_1_t &layer2, int
     mDstConfig = dstImg;
     mDoubleOperation = false;
 
-    if (needDoubleOperation) {
-        if (srcImg.releaseFenceFd >= 0) {
-            close(srcImg.releaseFenceFd);
-            srcImg.releaseFenceFd = -1;
-        }
-    } else {
-        layer1.releaseFenceFd = srcImg.releaseFenceFd;
-    }
+    layer1.releaseFenceFd = srcImg.releaseFenceFd;
 
-    return 0;
-
-err_alloc:
-    if (srcImg.acquireFenceFd >= 0) {
-        close(srcImg.acquireFenceFd);
-        srcImg.acquireFenceFd = -1;
-    }
-    if (mMidBuffers[0]) {
-        android::Mutex::Autolock lock(mMutex);
-        deleteBufferInfo buffInfo;
-        buffInfo.buffer = mMidBuffers[0];
-        buffInfo.bufFence = mMidBufFence[0];
-        mFreedBuffers.push_back(buffInfo);
-        mMidBuffers[0] = NULL;
-        mMidBufFence[0] = -1;
-    }
-    if (mMidBufFence[0] >= 0) {
-        close(mMidBufFence[0]);
-        mMidBufFence[0] = -1;
-    }
-
-    {
-        android::Mutex::Autolock lock(mMutex);
-        mBufferFreeThread->mCondition.signal();
-    }
-
-    memset(&mSrcConfig, 0, sizeof(mSrcConfig));
-    memset(&mDstConfig, 0, sizeof(mDstConfig));
-    memset(&mMidConfig, 0, sizeof(mMidConfig));
-    mBufferType = MPP_BUFFER_NORMAL;
-    mAllocatedBufferNum = 0;
-
-err_gsc_config:
     if (mMPPHandle != NULL){
         stopMPP(mMPPHandle);
         destroyMPP(mMPPHandle);
         mMPPHandle = NULL;
     }
 
-    if (srcImg.acquireFenceFd >= 0) {
-        close(srcImg.acquireFenceFd);
-        srcImg.acquireFenceFd = -1;
-    }
+    return 0;
+
+err_gsc_config:
+
+    destroyMPP(mMPPHandle);
+    mMPPHandle = NULL;
+
+    if (srcImg.acquireFenceFd >= 0)
+       close(srcImg.acquireFenceFd);
+
     memset(&mSrcConfig, 0, sizeof(mSrcConfig));
     memset(&mDstConfig, 0, sizeof(mDstConfig));
     mBufferType = MPP_BUFFER_NORMAL;
@@ -1852,8 +1745,9 @@ void ExynosMPP::setAllocDevice(alloc_device_t* allocDevice)
     if (mBufferFreeThread == NULL) {
         mBufferFreeThread = new BufferFreeThread(this);
         mBufferFreeThread->mRunning = true;
-        mBufferFreeThread->run("MPPThread");
+        mBufferFreeThread->run("ExynosMPPThread");
     }
+
 }
 
 bool ExynosMPP::wasUsedByDisplay(ExynosDisplay *display)

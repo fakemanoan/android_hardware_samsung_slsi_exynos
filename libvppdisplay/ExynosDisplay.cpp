@@ -9,7 +9,7 @@
 #include <utils/misc.h>
 #include <utils/Trace.h>
 #include <inttypes.h>
-#if defined(USES_DUAL_DISPLAY)
+#if (defined(USES_SINGLE_DECON))||(defined(USES_TWO_DECON))
 #include "ExynosSecondaryDisplayModule.h"
 #endif
 
@@ -344,7 +344,7 @@ ExynosDisplay::ExynosDisplay(uint32_t type, struct exynos5_hwc_composer_device_1
     case EXYNOS_PRIMARY_DISPLAY:
         mDisplayName = android::String8("PrimaryDisplay");
         break;
-#if defined(USES_DUAL_DISPLAY)
+#if (defined(USES_SINGLE_DECON))||(defined(USES_TWO_DECON))
     case EXYNOS_SECONDARY_DISPLAY:
         mDisplayName = android::String8("SecondaryDisplay");
         break;
@@ -362,7 +362,15 @@ ExynosDisplay::ExynosDisplay(uint32_t type, struct exynos5_hwc_composer_device_1
     if (mWinData == NULL)
         DISPLAY_LOGE("Fail to allocate mWinData");
 
+    char val[PROPERTY_VALUE_MAX];
     char def[PROPERTY_VALUE_MAX];
+
+    const int len = property_get("debug.hwc.skip_dma_types", val, "");
+    for (int i = 0; i < len; i+=2) {
+        unsigned int dma_type = val[i] - '0';
+        if (dma_type >= 0 && dma_type <= 9)
+            mSkipDMATypes.add(dma_type);
+    }
 
 #if defined(USES_SINGLE_DECON) || defined(USES_TWO_DECON)
     bool dualFlag = 0;
@@ -404,7 +412,7 @@ ExynosDisplay::~ExynosDisplay()
 int ExynosDisplay::prepare(hwc_display_contents_1_t *contents)
 {
     ATRACE_CALL();
-    DISPLAY_LOGD(eDebugDefault, "preparing %zu layers for FIMD", contents->numHwLayers);
+    DISPLAY_LOGD(eDebugDefault, "preparing %u layers for FIMD", contents->numHwLayers);
 
     if (!mForceFb)
         skipStaticLayers(contents);
@@ -444,7 +452,7 @@ int ExynosDisplay::set(hwc_display_contents_1_t *contents)
             err = fence;
     }
 
-#if defined(USES_DUAL_DISPLAY)
+#if defined(USES_SINGLE_DECON)
     if (mType != EXYNOS_SECONDARY_DISPLAY)
     {
 #endif
@@ -473,7 +481,7 @@ int ExynosDisplay::set(hwc_display_contents_1_t *contents)
         mLastRetireFenceFd = fence;
         dupFence(fence, contents);
     }
-#if defined(USES_DUAL_DISPLAY)
+#if defined(USES_SINGLE_DECON)
     }
 #endif
 
@@ -521,7 +529,7 @@ void ExynosDisplay::dupFence(int fence, hwc_display_contents_1_t *contents)
         if (!(layer.flags & HWC_SKIP_RENDERING) && ((layer.compositionType == HWC_OVERLAY) ||
                     ((mFbNeeded == true || this->mVirtualOverlayFlag) && layer.compositionType == HWC_FRAMEBUFFER_TARGET))) {
             int dup_fd = dup(fence);
-            DISPLAY_LOGD(eDebugFence, "%zu layer[type: %d, dst: %d, %d, %d, %d] fence is duplicated(%d)",
+            DISPLAY_LOGD(eDebugFence, "%d layer[type: %d, dst: %d, %d, %d, %d] fence is duplicated(%d)",
                     i, layer.compositionType,
                     layer.displayFrame.left, layer.displayFrame.top,
                     layer.displayFrame.right, layer.displayFrame.bottom,
@@ -552,7 +560,7 @@ void ExynosDisplay::dupFence(int fence, hwc_display_contents_1_t *contents)
         }
     }
 
-#if defined(USES_DUAL_DISPLAY)
+#if defined(USES_SINGLE_DECON)
     if (mType == EXYNOS_SECONDARY_DISPLAY)
         contents->retireFenceFd = dup(fence);
     else
@@ -634,8 +642,6 @@ void ExynosDisplay::doPreProcessing(hwc_display_contents_1_t* contents)
     mPreProcessedInfo.mHasDrmSurface = false;
     mForceOverlayLayerIndex = -1;
     this->mHasDrmSurface = false;
-    mYuvLayers = 0;
-    mLayersNeedScaling = false;
 
     for (size_t i = 0; i < contents->numHwLayers; i++) {
         hwc_layer_1_t &layer = contents->hwLayers[i];
@@ -646,11 +652,6 @@ void ExynosDisplay::doPreProcessing(hwc_display_contents_1_t* contents)
                 this->mHasDrmSurface = true;
                 mForceOverlayLayerIndex = i;
             }
-            if (!isFormatRgb(h->format)) {
-                this->mYuvLayers++;
-            }
-            if (isScaled(layer))
-                mLayersNeedScaling = true;
         }
     }
 }
@@ -815,7 +816,7 @@ int ExynosDisplay::clearDisplay()
 
 int ExynosDisplay::getCompModeSwitch()
 {
-    unsigned int updateFps = 0;
+    unsigned int tot_win_size = 0, updateFps = 0;
     unsigned int lcd_size = this->mXres * this->mYres;
     uint64_t TimeStampDiff;
     float Temp;
@@ -834,7 +835,7 @@ int ExynosDisplay::getCompModeSwitch()
     }
 
     /* If video layer is there, skip the mode switch */
-    if (mYuvLayers || mLayersNeedScaling) {
+    if (mYuvLayers) {
         if (mHwc->CompModeSwitch != HWC_2_GLES) {
             return 0;
         } else {
@@ -873,14 +874,8 @@ int ExynosDisplay::getCompModeSwitch()
         return 0;
     }
     mHwc->LastModeSwitchTimeStamp = mHwc->LastUpdateTimeStamp;
-    if ((mHwc->update_event_cnt != 1) && // This is not called by hwc_update_stat_thread
-        (mHwc->CompModeSwitch == HWC_2_GLES) && (mHwc->updateCallCnt == 1)) {
-        DISPLAY_LOGI("[DYNAMIC_RECOMP] first frame after HWC_2_GLES");
-        updateFps = HWC_FPS_TH;
-    } else {
-        Temp = (VSYNC_INTERVAL * 60) / TimeStampDiff;
-        updateFps = (int)(mHwc->updateCallCnt * Temp + 0.5);
-    }
+    Temp = (VSYNC_INTERVAL * 60) / TimeStampDiff;
+    updateFps = (int)(mHwc->updateCallCnt * Temp + 0.5);
     mHwc->updateCallCnt = 0;
     /*
      * FPS estimation.
@@ -914,7 +909,7 @@ int32_t ExynosDisplay::getDisplayAttributes(const uint32_t attribute, uint32_t _
         return this->mVsyncPeriod;
 
     case HWC_DISPLAY_WIDTH:
-#if defined(USES_DUAL_DISPLAY)
+#if defined(USES_SINGLE_DECON)
         if ((mType == EXYNOS_PRIMARY_DISPLAY) || (mType == EXYNOS_SECONDARY_DISPLAY))
             return this->mXres/2;
         else
@@ -955,17 +950,18 @@ void ExynosDisplay::getIDMAMinSize(hwc_layer_1_t __unused &layer, int *w, int *h
 bool ExynosDisplay::isOverlaySupported(hwc_layer_1_t &layer, size_t index, bool useVPPOverlay,
         ExynosMPPModule** supportedInternalMPP, ExynosMPPModule** supportedExternalMPP)
 {
+    int mMPPIndex = 0;
     int ret = 0;
     ExynosMPPModule* transitionInternalMPP = NULL;
     private_handle_t *handle = NULL;
     int handleFormat = 0;
     bool firstFrameFramebufferTarget = false;
 
-    DISPLAY_LOGD(eDebugOverlaySupported, "isOverlaySupported:: index(%zu), useVPPOverlay(%d)", index, useVPPOverlay);
+    DISPLAY_LOGD(eDebugOverlaySupported, "isOverlaySupported:: index(%d), useVPPOverlay(%d)", index, useVPPOverlay);
 
     if (layer.flags & HWC_SKIP_LAYER) {
         mLayerInfos[index]->mCheckOverlayFlag |= eSkipLayer;
-        DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %zu: skipping", index);
+        DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %u: skipping", index);
         return false;
     }
 
@@ -973,7 +969,7 @@ bool ExynosDisplay::isOverlaySupported(hwc_layer_1_t &layer, size_t index, bool 
         return true;
 
     if (index == 0 && layer.planeAlpha < 255) {
-        DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %zu: eUnsupportedPlaneAlpha", index);
+        DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %u: eUnsupportedPlaneAlpha", index);
         mLayerInfos[index]->mCheckOverlayFlag |= eUnsupportedPlaneAlpha;
         return false;
     }
@@ -984,7 +980,7 @@ bool ExynosDisplay::isOverlaySupported(hwc_layer_1_t &layer, size_t index, bool 
     }
 
     if ((layer.compositionType != HWC_FRAMEBUFFER_TARGET) && !handle) {
-        DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %zu: handle is NULL, type is %d", index, layer.compositionType);
+        DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %u: handle is NULL, type is %d", index, layer.compositionType);
         mLayerInfos[index]->mCheckOverlayFlag |= eInvalidHandle;
         return false;
     }
@@ -1003,7 +999,7 @@ bool ExynosDisplay::isOverlaySupported(hwc_layer_1_t &layer, size_t index, bool 
     }
 
     if (!isBlendingSupported(layer.blending)) {
-        DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %zu: blending %d not supported", index, layer.blending);
+        DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %u: blending %d not supported", index, layer.blending);
         mLayerInfos[index]->mCheckOverlayFlag |= eUnsupportedBlending;
         return false;
     }
@@ -1015,7 +1011,7 @@ bool ExynosDisplay::isOverlaySupported(hwc_layer_1_t &layer, size_t index, bool 
 
     if ((bpp == 16) &&
             ((layer.displayFrame.left % 2 != 0) || (layer.displayFrame.right % 2 != 0))) {
-        DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %zu: eNotAlignedDstPosition", index);
+        DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %u: eNotAlignedDstPosition", index);
         mLayerInfos[index]->mCheckOverlayFlag |= eNotAlignedDstPosition;
         return false;
     }
@@ -1031,7 +1027,7 @@ bool ExynosDisplay::isOverlaySupported(hwc_layer_1_t &layer, size_t index, bool 
             }
         } else {
 #endif
-            DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %zu: visible area is too narrow", index);
+            DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %u: visible area is too narrow", index);
             mLayerInfos[index]->mCheckOverlayFlag |= eUnsupportedDstWidth;
             return false;
 #ifdef USE_DRM_BURST_LEN
@@ -1046,7 +1042,7 @@ bool ExynosDisplay::isOverlaySupported(hwc_layer_1_t &layer, size_t index, bool 
     int originalHandleFormt =  handleFormat;
     int dst_format = handleFormat;
     bool isBothMPPUsed = isBothMPPProcessingRequired(layer, &extMPPOutLayer);
-    DISPLAY_LOGD(eDebugOverlaySupported, "isOverlaySupported:: index(%zu), isBothMPPUsed(%d)", index, isBothMPPUsed);
+    DISPLAY_LOGD(eDebugOverlaySupported, "isOverlaySupported:: index(%d), isBothMPPUsed(%d)", index, isBothMPPUsed);
 
     if (isBothMPPUsed) {
         if ((*supportedInternalMPP != NULL) && (*supportedExternalMPP != NULL))
@@ -1064,8 +1060,7 @@ bool ExynosDisplay::isOverlaySupported(hwc_layer_1_t &layer, size_t index, bool 
         if (!isFormatRgb(handleFormat) &&
             (WIDTH(extMPPOutLayer.displayFrame) % mCheckIntMPP->getCropWidthAlign(layer) != 0 ||
              HEIGHT(extMPPOutLayer.displayFrame) % mCheckIntMPP->getCropHeightAlign(layer) != 0 ||
-             !(mCheckIntMPP->isFormatSupportedByMPP(handleFormat)) ||
-             !(mCheckIntMPP->isCSCSupportedByMPP(handleFormat, HAL_PIXEL_FORMAT_RGBX_8888, 1))))
+             !(mCheckIntMPP->isFormatSupportedByMPP(handleFormat))))
             dst_format = mExternalMPPDstFormat;
 
         /* extMPPOutLayer is output of ExtMPP */
@@ -1085,7 +1080,7 @@ bool ExynosDisplay::isOverlaySupported(hwc_layer_1_t &layer, size_t index, bool 
 
         /* Can't find valid externalMPP */
         if (*supportedExternalMPP == NULL) {
-            DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %zu: Can't find valid externalMPP", index);
+            DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %u: Can't find valid externalMPP", index);
             mLayerInfos[index]->mCheckOverlayFlag |= eInsufficientMPP;
             return false;
         }
@@ -1126,9 +1121,12 @@ bool ExynosDisplay::isOverlaySupported(hwc_layer_1_t &layer, size_t index, bool 
                 ((private_handle_t *)extMPPTempOutLayer.handle)->format = dst_format;
                 extMPPTempOutLayer.transform = 0;
             }
-            ExynosDisplay *addedDisplay = (mHwc->hdmi_hpd ? (ExynosDisplay *)mHwc->externalDisplay : (ExynosDisplay *)mHwc->virtualDisplay);
+		    ExynosDisplay *addedDisplay = (mHwc->hdmi_hpd ? (ExynosDisplay *)mHwc->externalDisplay : (ExynosDisplay *)mHwc->virtualDisplay);
+#if defined(USES_TWO_DECON)
+	        ExynosDisplay *otherDisplay = (mType ? (ExynosDisplay *)mHwc->primaryDisplay : (ExynosDisplay *)mHwc->secondaryDisplay);
+#else
             ExynosDisplay *otherDisplay = (mType ? (ExynosDisplay *)mHwc->primaryDisplay : addedDisplay);
-
+#endif
             /*
              * If MPP was assigned to other Device in previous frame
              * then doesn't assign it untill it is cleared
@@ -1149,7 +1147,7 @@ bool ExynosDisplay::isOverlaySupported(hwc_layer_1_t &layer, size_t index, bool 
                     mLayerInfos[index]->mCheckMPPFlag |= -ret;
                 }
             } else if (internalMPP->wasUsedByDisplay(otherDisplay)) {
-                DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %zu: internalMPP[%d, %d] was used by other device", index, internalMPP->mType, internalMPP->mIndex);
+                DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %u: internalMPP[%d, %d] was used by other device", index, internalMPP->mType, internalMPP->mIndex);
                 if (transitionInternalMPP == NULL)
                     transitionInternalMPP = internalMPP;
             }
@@ -1159,10 +1157,10 @@ bool ExynosDisplay::isOverlaySupported(hwc_layer_1_t &layer, size_t index, bool 
     }
 
     if ((*supportedInternalMPP == NULL) && (useVPPOverlay == true) && !isProcessingRequired(layer)) {
-        DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %zu: eInsufficientMPP", index);
+        DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %u: eInsufficientMPP", index);
         mLayerInfos[index]->mCheckOverlayFlag |= eInsufficientMPP;
         if (transitionInternalMPP != NULL) {
-            DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %zu: internalMPP[%d, %d] transition is started", index, transitionInternalMPP->mType, transitionInternalMPP->mIndex);
+            DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %u: internalMPP[%d, %d] transition is started", index, transitionInternalMPP->mType, transitionInternalMPP->mIndex);
             transitionInternalMPP->startTransition(this);
         }
         return false;
@@ -1170,9 +1168,9 @@ bool ExynosDisplay::isOverlaySupported(hwc_layer_1_t &layer, size_t index, bool 
 
     /* Can't find valid internalMPP */
     if (isBothMPPProcessingRequired(layer) && *supportedInternalMPP == NULL) {
-        DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %zu: Can't find valid internalMPP", index);
+        DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %u: Can't find valid internalMPP", index);
         if (transitionInternalMPP != NULL) {
-            DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %zu: internalMPP[%d, %d] transition is started", index, transitionInternalMPP->mType, transitionInternalMPP->mIndex);
+            DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %u: internalMPP[%d, %d] transition is started", index, transitionInternalMPP->mType, transitionInternalMPP->mIndex);
             transitionInternalMPP->startTransition(this);
         }
         mLayerInfos[index]->mCheckOverlayFlag |= eInsufficientMPP;
@@ -1248,8 +1246,12 @@ bool ExynosDisplay::isOverlaySupported(hwc_layer_1_t &layer, size_t index, bool 
                     mLayerInfos[index]->mCheckMPPFlag |= -ret;
                 }
             } else {
-                ExynosDisplay *addedDisplay = (mHwc->hdmi_hpd ? (ExynosDisplay *)mHwc->externalDisplay : (ExynosDisplay *)mHwc->virtualDisplay);
+		        ExynosDisplay *addedDisplay = (mHwc->hdmi_hpd ? (ExynosDisplay *)mHwc->externalDisplay : (ExynosDisplay *)mHwc->virtualDisplay);
+#if defined(USES_TWO_DECON)
+	            ExynosDisplay *otherDisplay = (mType ? (ExynosDisplay *)mHwc->primaryDisplay : (ExynosDisplay *)mHwc->secondaryDisplay);
+#else
                 ExynosDisplay *otherDisplay = (mType ? (ExynosDisplay *)mHwc->primaryDisplay : addedDisplay);
+#endif
                 if (firstFrameFramebufferTarget) {
                     if ((internalMPP->wasUsedByDisplay(otherDisplay)) && (transitionInternalMPP == NULL))
                         transitionInternalMPP = internalMPP;
@@ -1269,12 +1271,12 @@ bool ExynosDisplay::isOverlaySupported(hwc_layer_1_t &layer, size_t index, bool 
 
     /* Transit display for next frame */
     if ((*supportedInternalMPP == NULL) && (transitionInternalMPP != NULL)) {
-        DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %zu: internalMPP[%d, %d] transition is started", index, transitionInternalMPP->mType, transitionInternalMPP->mIndex);
+        DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %u: internalMPP[%d, %d] transition is started", index, transitionInternalMPP->mType, transitionInternalMPP->mIndex);
         transitionInternalMPP->startTransition(this);
     }
 
     /* Can't find valid MPP */
-    DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %zu: can't find valid MPP", index);
+    DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %u: can't find valid MPP", index);
     mLayerInfos[index]->mCheckOverlayFlag |= eInsufficientMPP;
     return false;
 
@@ -1509,7 +1511,7 @@ void ExynosDisplay::configureOverlay(hwc_layer_1_t *layer, size_t index, decon_w
         } else {
             getIDMAMinSize(*layer, &minCropWidth, &minCropHeight);
         }
-#if defined(USES_DUAL_DISPLAY)
+#if defined(USES_SINGLE_DECON)
         int32_t minLeftPosition = (mType != EXYNOS_SECONDARY_DISPLAY)? 0:(mXres/2);
         int32_t maxRightPosition = (mType == EXYNOS_PRIMARY_DISPLAY)?(mXres/2):mXres;
 #else
@@ -1530,7 +1532,7 @@ void ExynosDisplay::configureOverlay(hwc_layer_1_t *layer, size_t index, decon_w
             mFbUpdateRegion.right = ALIGN_UP(mFbUpdateRegion.right, cropWidthAlign);
         }
         if (WIDTH(mFbUpdateRegion) < minCropWidth) {
-#if defined(USES_DUAL_DISPLAY)
+#if defined(USES_SINGLE_DECON)
             if (mFbUpdateRegion.left + minCropWidth <= maxRightPosition)
                 mFbUpdateRegion.right = mFbUpdateRegion.left + minCropWidth;
             else
@@ -1551,7 +1553,7 @@ void ExynosDisplay::configureOverlay(hwc_layer_1_t *layer, size_t index, decon_w
 
         if ((mFbUpdateRegion.left >= minLeftPosition) && (mFbUpdateRegion.top >= 0) &&
             (mFbUpdateRegion.right <= maxRightPosition) && (mFbUpdateRegion.bottom <= mYres)) {
-#ifdef USES_DUAL_DISPLAY
+#ifdef USES_SINGLE_DECON
             if (mType == EXYNOS_SECONDARY_DISPLAY) {
                 layer->sourceCropf.left = (double)mFbUpdateRegion.left - (mXres/2);
                 layer->sourceCropf.right = (double)mFbUpdateRegion.right - (mXres/2);
@@ -1665,11 +1667,11 @@ int ExynosDisplay::handleWindowUpdate(hwc_display_contents_1_t __unused *content
                 }
 
                 if ((currentRect.left > currentRect.right) || (currentRect.top > currentRect.bottom)) {
-                    DISPLAY_LOGD(eDebugWindowUpdate, "[WIN_UPDATE] window(%zu) layer(%i) invalid region (%4d, %4d) - (%4d, %4d)",
+                    DISPLAY_LOGD(eDebugWindowUpdate, "[WIN_UPDATE] window(%d) layer(%d) invalid region (%4d, %4d) - (%4d, %4d)",
                         i, layerIdx, currentRect.left, currentRect.top, currentRect.right, currentRect.bottom);
                     return -eWindowUpdateInvalidRegion;
                 }
-                DISPLAY_LOGD(eDebugWindowUpdate, "[WIN_UPDATE] Updated Window(%d) Layer(%zu)  (%4d, %4d) - (%4d, %4d)",
+                DISPLAY_LOGD(eDebugWindowUpdate, "[WIN_UPDATE] Updated Window(%d) Layer(%d)  (%4d, %4d) - (%4d, %4d)",
                     windowIndex, i, currentRect.left, currentRect.top, currentRect.right, currentRect.bottom);
                 updateRect = expand(updateRect, currentRect);
             }
@@ -1790,7 +1792,7 @@ int ExynosDisplay::handleWindowUpdate(hwc_display_contents_1_t __unused *content
                         }
                     } else {
 #endif
-                        DISPLAY_LOGD(eDebugWindowUpdate, "[WIN_UPDATE] win[%d] insufficient burst length (%d)*(%d) < %zu", windowIndex, intersectionWidth, bitsPerPixel, BURSTLEN_BYTES);
+                        DISPLAY_LOGD(eDebugWindowUpdate, "[WIN_UPDATE] win[%d] insufficient burst length (%d)*(%d) < %d", windowIndex, intersectionWidth, bitsPerPixel, BURSTLEN_BYTES);
                         burstLengthCheckDone = false;
                         break;
 #ifdef USE_DRM_BURST_LEN
@@ -1811,6 +1813,10 @@ int ExynosDisplay::handleWindowUpdate(hwc_display_contents_1_t __unused *content
             DISPLAY_LOGD(eDebugWindowUpdate, "[WIN_UPDATE] Error during update width adjustment");
             return -eWindowUpdateAdjustmentFail;
         }
+    }
+    if ((updateRect.left > updateRect.right) || (updateRect.top > updateRect.bottom)) {
+        DISPLAY_LOGD(eDebugWindowUpdate, "[WIN_UPDATE] Region is Invalid (%d, %d) (%d x %d)", updateRect.left, updateRect.top, WIDTH(updateRect), HEIGHT(updateRect));
+        return -eWindowUpdateInvalidRegion;
     }
 
     config[winUpdateInfoIdx].state = config[winUpdateInfoIdx].DECON_WIN_STATE_UPDATE;
@@ -1887,7 +1893,7 @@ int ExynosDisplay::handleWindowUpdate(hwc_display_contents_1_t __unused *content
     return 1;
 }
 
-void ExynosDisplay::getLayerRegion(hwc_layer_1_t &layer __unused, decon_win_rect &rect_area, uint32_t regionType)
+void ExynosDisplay::getLayerRegion(hwc_layer_1_t &layer, decon_win_rect &rect_area, uint32_t regionType)
 {
     hwc_rect_t const *hwcRects = NULL;
     unsigned int numRects = 0;
@@ -1996,7 +2002,7 @@ int ExynosDisplay::postFrame(hwc_display_contents_1_t* contents)
         return -1;
     }
     struct decon_win_config *config = mWinData->config;
-
+    int win_map = 0;
     int tot_ovly_wins = 0;
     uint32_t rectCount = 0;
     int ret = 0;
@@ -2029,18 +2035,20 @@ int ExynosDisplay::postFrame(hwc_display_contents_1_t* contents)
 
         if ((layer.flags & HWC_SKIP_RENDERING) ||
             ((layer.compositionType == HWC_OVERLAY) &&
-             ((window_index < 0) || (window_index >= (int32_t)NUM_HW_WINDOWS)))) {
+             ((window_index < 0) || (window_index >= NUM_HW_WINDOWS)))) {
             if (layer.acquireFenceFd >= 0)
                 close(layer.acquireFenceFd);
             layer.acquireFenceFd = -1;
             layer.releaseFenceFd = -1;
 
-            if ((window_index < 0) || (window_index >= (int32_t)NUM_HW_WINDOWS)) {
+            if ((window_index < 0) || (window_index >= NUM_HW_WINDOWS)) {
                 android::String8 result;
-                DISPLAY_LOGE("window of layer %zu was not assigned (window_index: %d)", i, window_index);
+                DISPLAY_LOGE("window of layer %d was not assigned (window_index: %d)", i, window_index);
                 dumpContents(result, contents);
+//                ALOGE(result.string());
                 result.clear();
                 dumpLayerInfo(result);
+//                ALOGE(result.string());
             }
             continue;
         }
@@ -2091,7 +2099,7 @@ int ExynosDisplay::postFrame(hwc_display_contents_1_t* contents)
     if ((ret = handleWindowUpdate(contents, config)) < 0)
         DISPLAY_LOGD(eDebugWindowUpdate, "[WIN_UPDATE] UpdateRegion is FullScreen, ret(%d)", ret);
 
-#if defined(USES_DUAL_DISPLAY)
+#if defined(USES_SINGLE_DECON)
     if (mType == EXYNOS_PRIMARY_DISPLAY) {
         int8_t indexLastConfig = 0;
         for (size_t i = 0; i < NUM_HW_WINDOWS; i++) {
@@ -2132,7 +2140,7 @@ int ExynosDisplay::postFrame(hwc_display_contents_1_t* contents)
     {
 #endif
         for (size_t i = 0; i <= NUM_HW_WINDOWS; i++) {
-            DISPLAY_LOGD(eDebugWinConfig, "window %zu configuration:", i);
+            DISPLAY_LOGD(eDebugWinConfig, "window %u configuration:", i);
             dumpConfig(config[i]);
         }
 
@@ -2143,13 +2151,21 @@ int ExynosDisplay::postFrame(hwc_display_contents_1_t* contents)
                     result.appendFormat("window %zu configuration:\n", i);
                     dumpConfig(config[i], result);
                 }
+//                ALOGE(result.string());
                 result.clear();
                 dumpContents(result, contents);
+//                ALOGE(result.string());
                 result.clear();
                 dumpLayerInfo(result);
+//                ALOGE(result.string());
         }
 
-        if (checkConfigChanged(*mWinData, mLastConfigData) == false) {
+#ifdef USES_VR_FRONT_BUFFER
+        if (mHwc->psrMode == 0 && checkConfigChanged(*mWinData, mLastConfigData) == false)
+#else
+        if (checkConfigChanged(*mWinData, mLastConfigData) == false)
+#endif
+        {
             ret = 0;
         } else {
             ret = winconfigIoctl(mWinData);
@@ -2169,7 +2185,7 @@ int ExynosDisplay::postFrame(hwc_display_contents_1_t* contents)
             if (config[i].fence_fd != -1)
                 close(config[i].fence_fd);
         }
-#if defined(USES_DUAL_DISPLAY)
+#if defined(USES_SINGLE_DECON)
     } else {
         memcpy(&(this->mLastConfigData), mWinData, sizeof(*mWinData));
     }
@@ -2191,8 +2207,12 @@ int ExynosDisplay::postFrame(hwc_display_contents_1_t* contents)
 void ExynosDisplay::skipStaticLayers(hwc_display_contents_1_t* contents)
 {
     mVirtualOverlayFlag = 0;
+    int win_map = 0;
     int fbIndex = contents->numHwLayers - 1;
-
+#if defined(USES_TWO_DECON)
+    if(mType == EXYNOS_SECONDARY_DISPLAY)
+		return;
+#endif	
     if (!mHwc->hwc_ctrl.skip_static_layer_mode)
         return;
 
@@ -2225,7 +2245,7 @@ void ExynosDisplay::skipStaticLayers(hwc_display_contents_1_t* contents)
 
         if ((mLastFbWindow >= NUM_HW_WINDOWS) || (fbIndex < 0)) {
             mSkipStaticInitFlag = false;
-            DISPLAY_LOGE("skipStaticLayers:: invalid mLastFbWindow(%zu), fbIndex(%d)", mLastFbWindow, fbIndex);
+            DISPLAY_LOGE("skipStaticLayers:: invalid mLastFbWindow(%d), fbIndex(%d)", mLastFbWindow, fbIndex);
             return;
         }
         /* DMA mapping is changed */
@@ -2380,8 +2400,12 @@ void ExynosDisplay::determineYuvOverlay(hwc_display_contents_1_t *contents)
         ExynosMPPModule* supportedExternalMPP = NULL;
         hwc_layer_1_t &layer = contents->hwLayers[i];
         useVPPOverlayFlag = false;
+        hwc_frect_t origin;
         if (layer.handle) {
             private_handle_t *handle = private_handle_t::dynamicCast(layer.handle);
+
+            if (layer.flags & HWC_SKIP_LAYER)
+                continue;
 
             if (getDrmMode(handle->flags) != NO_DRM) {
                 useVPPOverlayFlag = true;
@@ -2467,13 +2491,13 @@ void ExynosDisplay::determineYuvOverlay(hwc_display_contents_1_t *contents)
                         if ((getDrmMode(handle->flags) != NO_DRM) &&
                                 (supportedInternalMPP != NULL)) {
                             if (WIDTH(layer.displayFrame) < supportedInternalMPP->getMinWidth(layer)) {
-                                ALOGE("determineYuvOverlay layer %zu displayFrame width %d is smaller than vpp minWidth %d",
+                                ALOGE("determineYuvOverlay layer %d displayFrame width %d is smaller than vpp minWidth %d",
                                     i, WIDTH(layer.displayFrame), supportedInternalMPP->getMinWidth(layer));
                                 layer.displayFrame.right = layer.displayFrame.left +
                                     ALIGN_DOWN(WIDTH(layer.displayFrame), supportedInternalMPP->getMinWidth(layer));
                             }
                             if (HEIGHT(layer.displayFrame) < supportedInternalMPP->getMinHeight(layer)) {
-                                ALOGE("determineYuvOverlay layer %zu displayFrame height %d is smaller than vpp minHeight %d",
+                                ALOGE("determineYuvOverlay layer %d displayFrame height %d is smaller than vpp minHeight %d",
                                     i, HEIGHT(layer.displayFrame), supportedInternalMPP->getMinHeight(layer));
                                 layer.displayFrame.bottom = layer.displayFrame.top +
                                     ALIGN_DOWN(HEIGHT(layer.displayFrame), supportedInternalMPP->getMinHeight(layer));
@@ -2519,13 +2543,13 @@ void ExynosDisplay::determineSupportedOverlays(hwc_display_contents_1_t *content
 
         mLayerInfos[i]->mCompressed = isCompressed(layer);
         if (layer.compositionType == HWC_FRAMEBUFFER_TARGET) {
-            DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %zu: framebuffer target", i);
+            DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %u: framebuffer target", i);
             mLayerInfos[i]->compositionType = layer.compositionType;
             continue;
         }
 
         if (layer.compositionType == HWC_BACKGROUND && !mForceFb) {
-            DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %zu: background supported", i);
+            DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %u: background supported", i);
             dumpLayer(eDebugOverlaySupported, &contents->hwLayers[i]);
             mLayerInfos[i]->compositionType = layer.compositionType;
             continue;
@@ -2552,7 +2576,7 @@ void ExynosDisplay::determineSupportedOverlays(hwc_display_contents_1_t *content
                     mHwc->mS3DMode = S3D_MODE_RUNNING;
             }
             mHwc->incomingPixels += WIDTH(layer.displayFrame) * HEIGHT(layer.displayFrame);
-            DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer(%zu), type=%d, flags=%08x, handle=%p, tr=%02x, blend=%04x, "
+            DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer(%d), type=%d, flags=%08x, handle=%p, tr=%02x, blend=%04x, "
                     "{%7.1f,%7.1f,%7.1f,%7.1f}, {%d,%d,%d,%d}", i,
                     layer.compositionType, layer.flags, layer.handle, layer.transform,
                     layer.blending,
@@ -2571,7 +2595,7 @@ void ExynosDisplay::determineSupportedOverlays(hwc_display_contents_1_t *content
             if(((getDrmMode(handle->flags) != NO_DRM) ||
                 (!mForceFb && (!mHwc->hwc_ctrl.dynamic_recomp_mode || mHwc->CompModeSwitch != HWC_2_GLES))) &&
                isOverlaySupported(contents->hwLayers[i], i, false, &supportedInternalMPP, &supportedExternalMPP)) {
-                DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %zu: overlay supported", i);
+                DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %u: overlay supported", i);
                 if (supportedExternalMPP != NULL) {
                     supportedExternalMPP->mState = MPP_STATE_ASSIGNED;
                     mLayerInfos[i]->mExternalMPP = supportedExternalMPP;
@@ -2589,7 +2613,7 @@ void ExynosDisplay::determineSupportedOverlays(hwc_display_contents_1_t *content
             } else {
                 ExynosMPPModule *dummyInternal = NULL;
                 ExynosMPPModule *dummyExternal = NULL;
-                DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %zu: overlay is not supported, dynamic_recomp_mode(%d), CompModeSwitch(%d)", i, mHwc->hwc_ctrl.dynamic_recomp_mode, mHwc->CompModeSwitch);
+                DISPLAY_LOGD(eDebugOverlaySupported, "\tlayer %u: overlay is not supported, dynamic_recomp_mode(%d), CompModeSwitch(%d)", i, mHwc->hwc_ctrl.dynamic_recomp_mode, mHwc->CompModeSwitch);
                 if (mForceFb)
                     mLayerInfos[i]->mCheckOverlayFlag |= eForceFbEnabled;
                 else if (mHwc->hwc_ctrl.dynamic_recomp_mode && mHwc->CompModeSwitch == HWC_2_GLES)
@@ -2683,6 +2707,7 @@ void ExynosDisplay::determineBandwidthSupport(hwc_display_contents_1_t *contents
     bool changed;
     this->mBypassSkipStaticLayer = false;
     unsigned int cannotComposeFlag = 0;
+    int internalDMAsUsed = 0;
     int retry = 0;
     int fbIndex = contents->numHwLayers - 1;
 
@@ -2755,11 +2780,7 @@ void ExynosDisplay::determineBandwidthSupport(hwc_display_contents_1_t *contents
                     supportedInternalMPP->mState = MPP_STATE_ASSIGNED;
                     mLayerInfos[fbIndex]->mInternalMPP = supportedInternalMPP;
                     mLayerInfos[fbIndex]->mDmaType = getDeconDMAType(mLayerInfos[fbIndex]->mInternalMPP);
-#if defined(MAX_DECON_DMA_TYPE)
                     if (mLayerInfos[fbIndex]->mDmaType >= MAX_DECON_DMA_TYPE) {
-#else
-                    if (mLayerInfos[fbIndex]->mDmaType >= IDMA_MAX) {
-#endif
                         ALOGE("getDeconDMAType with InternalMPP for FramebufferTarget failed (MPP type: %d, MPP index: %d)",
                                 mLayerInfos[fbIndex]->mInternalMPP->mType, mLayerInfos[fbIndex]->mInternalMPP->mIndex);
                         mLayerInfos[fbIndex]->mDmaType = 0;
@@ -2774,7 +2795,7 @@ void ExynosDisplay::determineBandwidthSupport(hwc_display_contents_1_t *contents
             windows_left = min(mAllowedOverlays, mHwc->hwc_ctrl.max_num_ovly);
         }
 
-        DISPLAY_LOGD(eDebugResourceAssigning, "determineBandwidthSupport:: retry(%d), mAllowedOverlays(%d), windows_left(%zu), win_idx(%d)",
+        DISPLAY_LOGD(eDebugResourceAssigning, "determineBandwidthSupport:: retry(%d), mAllowedOverlays(%d), windows_left(%d), win_idx(%d)",
                 retry, mAllowedOverlays, windows_left, win_idx);
 
         for (size_t i = 0; i < contents->numHwLayers; i++) {
@@ -2823,27 +2844,42 @@ void ExynosDisplay::determineBandwidthSupport(hwc_display_contents_1_t *contents
             supportedInternalMPP = mLayerInfos[i]->mInternalMPP;
             supportedExternalMPP = mLayerInfos[i]->mExternalMPP;
 
-            if (can_compose && !isProcessingRequired(layer) && isOverlaySupportedByIDMA(layer, i) &&
+            /* determine overlay constraints */
+            bool overlaySupported = isOverlaySupported(layer, i,
+                    !isProcessingRequired(layer) |
+                    (directFbNum >= mInternalDMAs.size() && !(mUseSecureDMA && isTopLayer)),
+                    &supportedInternalMPP, &supportedExternalMPP);
+            bool overlaySupportedByIDMA = isOverlaySupportedByIDMA(layer, i);
+
+            /* TODO: why is this breaking some platforms? */
+            if (mSkipDMATypes.size() > 0 && supportedInternalMPP != NULL && can_compose) {
+                for (unsigned int dma_type : mSkipDMATypes) {
+                    if (supportedInternalMPP->mType == dma_type) {
+                        ALOGW("Cannot compose overlay for internal mpp (type=%d, index=%d), "
+                              "fallback to FRAMEBUFFER", dma_type, supportedInternalMPP->mIndex);
+                        can_compose = false;
+                    }
+                }
+            }
+
+            if (can_compose && !isProcessingRequired(layer) && overlaySupportedByIDMA &&
                 (directFbNum < mInternalDMAs.size() || (mUseSecureDMA && isTopLayer))) {
                 if (directFbNum < mInternalDMAs.size())
                     directFbNum++;
-                DISPLAY_LOGD(eDebugResourceAssigning, "layer(%zu) is directFB", i);
-            } else if (can_compose && isOverlaySupported(layer, i,
-                        !isProcessingRequired(layer) |
-                        (directFbNum >= mInternalDMAs.size() && !(mUseSecureDMA && isTopLayer)),
-                        &supportedInternalMPP, &supportedExternalMPP)) {
-                DISPLAY_LOGD(eDebugResourceAssigning, "layer(%zu) is OVERLAY ",i);
+                DISPLAY_LOGD(eDebugResourceAssigning, "layer(%d) is directFB", i);
+            } else if (can_compose && overlaySupported) {
+                DISPLAY_LOGD(eDebugResourceAssigning, "layer(%d) is OVERLAY ",i);
                 if (supportedInternalMPP != NULL) {
-                    DISPLAY_LOGD(eDebugResourceAssigning, "layer(%zu) is OVERLAY internalMPP(%d, %d)", i, supportedInternalMPP->mType, supportedInternalMPP->mIndex);
+                    DISPLAY_LOGD(eDebugResourceAssigning, "layer(%d) is OVERLAY internalMPP(%d, %d)", i, supportedInternalMPP->mType, supportedInternalMPP->mIndex);
                     supportedInternalMPP->mState = MPP_STATE_ASSIGNED;
                     mLayerInfos[i]->mInternalMPP = supportedInternalMPP;
                     mLayerInfos[i]->mDmaType = getDeconDMAType(mLayerInfos[i]->mInternalMPP);
                 }
                 if (supportedExternalMPP != NULL) {
-                    DISPLAY_LOGD(eDebugResourceAssigning, "layer(%zu) is OVERLAY externalMPP(%d, %d)", i, supportedExternalMPP->mType, supportedExternalMPP->mIndex);
+                    DISPLAY_LOGD(eDebugResourceAssigning, "layer(%d) is OVERLAY externalMPP(%d, %d)", i, supportedExternalMPP->mType, supportedExternalMPP->mIndex);
                     supportedExternalMPP->mState = MPP_STATE_ASSIGNED;
                     mLayerInfos[i]->mExternalMPP = supportedExternalMPP;
-                    if ((supportedInternalMPP == NULL) && isOverlaySupportedByIDMA(layer, i) &&
+                    if ((supportedInternalMPP == NULL) && overlaySupportedByIDMA &&
                         ((directFbNum < mInternalDMAs.size()) || (mUseSecureDMA && isTopLayer))) {
                         if (directFbNum < mInternalDMAs.size()) {
                             mLayerInfos[i]->mDmaType = mInternalDMAs[directFbNum];
@@ -2857,7 +2893,7 @@ void ExynosDisplay::determineBandwidthSupport(hwc_display_contents_1_t *contents
                 if (!isFormatRgb(handle->format))
                     videoOverlays++;
             } else {
-                DISPLAY_LOGD(eDebugResourceAssigning, "layer(%zu) is changed to FRAMEBUFFER", i);
+                DISPLAY_LOGD(eDebugResourceAssigning, "layer(%d) is changed to FRAMEBUFFER", i);
                 can_compose = false;
             }
 
@@ -2945,7 +2981,7 @@ void ExynosDisplay::determineBandwidthSupport(hwc_display_contents_1_t *contents
             android::String8 result;
             result.clear();
             dumpLayerInfo(result);
-            DISPLAY_LOGE("%s", result.string());
+//            DISPLAY_LOGE("%s", result.string());
             break;
         }
     } while(changed);
@@ -2983,7 +3019,7 @@ void ExynosDisplay::determineBandwidthSupport(hwc_display_contents_1_t *contents
 
     int w = WIDTH(mFbUpdateRegion);
     if (w < minWidth) {
-#if defined(USES_DUAL_DISPLAY)
+#if defined(USES_SINGLE_DECON)
         uint32_t maxRightPosition = (mType == EXYNOS_PRIMARY_DISPLAY)?(mXres/2):mXres;
         if (mFbUpdateRegion.left + minWidth <= maxRightPosition)
             mFbUpdateRegion.right = mFbUpdateRegion.left + minWidth;
@@ -3016,7 +3052,7 @@ void ExynosDisplay::assignWindows(hwc_display_contents_1_t *contents)
             /* mDmaType was set by determineBandwidthSupport() */
         }
 
-        DISPLAY_LOGD(eDebugResourceAssigning, "assigning layer %zu to DMA %u", contents->numHwLayers - 1, mLayerInfos[contents->numHwLayers - 1]->mDmaType);
+        DISPLAY_LOGD(eDebugResourceAssigning, "assigning layer %u to DMA %u", contents->numHwLayers - 1, mLayerInfos[contents->numHwLayers - 1]->mDmaType);
     }
 
     if (mFbNeeded && mUseSecureDMA && !isCompressed(fbLayer) && (mLastFb == (contents->numHwLayers - 2)))
@@ -3050,7 +3086,7 @@ void ExynosDisplay::assignWindows(hwc_display_contents_1_t *contents)
 
         if (layer.compositionType != HWC_FRAMEBUFFER) {
             if (mFbNeeded && (layer.compositionType == HWC_FRAMEBUFFER_TARGET)) {
-                DISPLAY_LOGD(eDebugResourceAssigning, "assigning framebuffer target %zu to window %u", i, nextWindow);
+                DISPLAY_LOGD(eDebugResourceAssigning, "assigning framebuffer target %u to window %u", i, nextWindow);
                 mLayerInfos[i]->mWindowIndex = mFbWindow;
                 if (mLayerInfos[i]->mInternalMPP != NULL)
                     mLayerInfos[i]->mInternalMPP->setDisplay(this);
@@ -3062,22 +3098,23 @@ void ExynosDisplay::assignWindows(hwc_display_contents_1_t *contents)
                      isOverlaySupportedByIDMA(layer, i) && (directFbNum < mInternalDMAs.size() || (mUseSecureDMA && isTopLayer)))
                 {
                     if (directFbNum < mInternalDMAs.size()) {
-                        DISPLAY_LOGD(eDebugResourceAssigning, "assigning layer %zu to DMA %u", i, mInternalDMAs[directFbNum]);
+                        DISPLAY_LOGD(eDebugResourceAssigning, "assigning layer %u to DMA %u", i, mInternalDMAs[directFbNum]);
                         mLayerInfos[i]->mDmaType = mInternalDMAs[directFbNum];
                         mLayerInfos[i]->mWindowIndex = nextWindow;
                         directFbNum++;
                     } else {
-                        DISPLAY_LOGD(eDebugResourceAssigning, "assigning layer %zu to DMA %u", i, IDMA_SECURE);
+                        DISPLAY_LOGD(eDebugResourceAssigning, "assigning layer %u to DMA %u", i, IDMA_SECURE);
                         mLayerInfos[i]->mDmaType = IDMA_SECURE;
                         mLayerInfos[i]->mWindowIndex = NUM_HW_WINDOWS - 1;
                     }
                 } else {
-                    DISPLAY_LOGD(eDebugResourceAssigning, "%zu layer can't use internalDMA, isProcessingRequired(%d)", i, isProcessingRequired(layer));
+                    DISPLAY_LOGD(eDebugResourceAssigning, "%u layer can't use internalDMA, isProcessingRequired(%d)", i, isProcessingRequired(layer));
+                    unsigned int dmaType = 0;
                     mLayerInfos[i]->mWindowIndex = nextWindow;
                     if (mLayerInfos[i]->mInternalMPP != NULL) {
                         mLayerInfos[i]->mInternalMPP->setDisplay(this);
                         mLayerInfos[i]->mDmaType = getDeconDMAType(mLayerInfos[i]->mInternalMPP);
-                        DISPLAY_LOGD(eDebugResourceAssigning, "assigning layer %zu to DMA %u", i, mLayerInfos[i]->mDmaType);
+                        DISPLAY_LOGD(eDebugResourceAssigning, "assigning layer %u to DMA %u", i, mLayerInfos[i]->mDmaType);
                     } else {
                         /* Find unused DMA connected with VPP */
                         for (size_t j = 0; j < mInternalMPPs.size(); j++ )
@@ -3092,7 +3129,7 @@ void ExynosDisplay::assignWindows(hwc_display_contents_1_t *contents)
                                 mLayerInfos[i]->mDmaType = getDeconDMAType(mLayerInfos[i]->mInternalMPP);
                                 mLayerInfos[i]->mInternalMPP->setDisplay(this);
                                 mLayerInfos[i]->mInternalMPP->mState = MPP_STATE_ASSIGNED;
-                                DISPLAY_LOGD(eDebugResourceAssigning, "assigning layer %zu to DMA %u", i, mLayerInfos[i]->mDmaType);
+                                DISPLAY_LOGD(eDebugResourceAssigning, "assigning layer %u to DMA %u", i, mLayerInfos[i]->mDmaType);
                                 break;
                             }
                         }
@@ -3170,7 +3207,6 @@ int ExynosDisplay::postMPPM2M(hwc_layer_1_t &layer, struct decon_win_config *con
         (isFormatRgb(handle->format) ||
         (bothMPPUsed && !isFormatRgb(handle->format) &&
          exynosInternalMPP != NULL &&
-         exynosInternalMPP->isCSCSupportedByMPP(handle->format, HAL_PIXEL_FORMAT_RGBX_8888, 1) &&
          exynosInternalMPP->isFormatSupportedByMPP(handle->format) &&
          WIDTH(extMPPOutLayer.displayFrame) % exynosInternalMPP->getCropWidthAlign(layer) == 0 &&
          HEIGHT(extMPPOutLayer.displayFrame) % exynosInternalMPP->getCropHeightAlign(layer) == 0)))
@@ -3212,11 +3248,11 @@ void ExynosDisplay::handleStaticLayers(hwc_display_contents_1_t *contents, struc
 {
     int win_map = 0;
     if (mLastFbWindow >= NUM_HW_WINDOWS) {
-        DISPLAY_LOGE("handleStaticLayers:: invalid mLastFbWindow(%zu)", mLastFbWindow);
+        DISPLAY_LOGE("handleStaticLayers:: invalid mLastFbWindow(%d)", mLastFbWindow);
         return;
     }
     win_map = mLastFbWindow;
-    DISPLAY_LOGD(eDebugSkipStaicLayer, "[USE] SKIP_STATIC_LAYER_COMP, mLastFbWindow(%zu), win_map(%d)\n", mLastFbWindow, win_map);
+    DISPLAY_LOGD(eDebugSkipStaicLayer, "[USE] SKIP_STATIC_LAYER_COMP, mLastFbWindow(%d), win_map(%d)\n", mLastFbWindow, win_map);
 
     memcpy(&win_data.config[win_map],
             &mLastConfigData.config[win_map], sizeof(struct decon_win_config));
@@ -3287,6 +3323,7 @@ bool ExynosDisplay::isBothMPPProcessingRequired(hwc_layer_1_t &layer)
                           ((dstH > srcH * maxUpscaleExt) && (dstH <= srcH * maxUpscaleExt * maxUpscaleInt));
 
     int maxDownscaleExt = mExternalMPPs[0]->getMaxDownscale(layer);
+    int maxDownscaleInt = mCheckIntMPP->getMaxDownscale(layer);
 
     needDoubleOperation |= ((dstW < srcW / maxDownscaleExt) && (dstW >= srcW / (maxDownscaleExt * maxDownscaleExt))) ||
                           ((dstH < srcH / maxDownscaleExt) && (dstH >= srcH / (maxDownscaleExt * maxDownscaleExt)));
@@ -3357,23 +3394,28 @@ bool ExynosDisplay::isBothMPPProcessingRequired(hwc_layer_1_t &layer, hwc_layer_
         memcpy(extMPPOutLayer, &layer, sizeof(hwc_layer_1_t));
         extMPPOutLayer->displayFrame.left = 0;
         extMPPOutLayer->displayFrame.top = 0;
+        int dst_format;
+        if (mType == EXYNOS_VIRTUAL_DISPLAY)
+            dst_format = mExternalMPPDstFormat;
+        else
+            dst_format = srcHandle->format;
 
         if (dstW > srcW * maxUpscaleExt) {
             extMPPOutLayer->displayFrame.right = ALIGN_UP((int)ceilf((float)dstW/ maxUpscaleInt),
-                    mExternalMPPs[0]->getDstWidthAlign(srcHandle->format));
+                    mExternalMPPs[0]->getDstWidthAlign(dst_format));
         } else if (dstW < srcW / maxDownscaleExt) {
             extMPPOutLayer->displayFrame.right = ALIGN(dstW * maxDownscaleInt,
-                    mExternalMPPs[0]->getDstWidthAlign(srcHandle->format));
+                    mExternalMPPs[0]->getDstWidthAlign(dst_format));
         } else {
             extMPPOutLayer->displayFrame.right = dstW;
         }
 
         if (dstH > srcH * maxUpscaleExt) {
             extMPPOutLayer->displayFrame.bottom = ALIGN_UP((int)ceilf((float)dstH/ maxUpscaleInt),
-                    mExternalMPPs[0]->getDstHeightAlign(srcHandle->format));
+                    mExternalMPPs[0]->getDstHeightAlign(dst_format));
         } else if (dstH < srcH / maxDownscaleExt) {
             extMPPOutLayer->displayFrame.bottom = ALIGN(dstH * maxDownscaleInt,
-                    mExternalMPPs[0]->getDstHeightAlign(srcHandle->format));
+                    mExternalMPPs[0]->getDstHeightAlign(dst_format));
         } else {
             extMPPOutLayer->displayFrame.bottom = dstH;
         }
@@ -3389,13 +3431,13 @@ bool ExynosDisplay::isBothMPPProcessingRequired(hwc_layer_1_t &layer, hwc_layer_
     return needDoubleOperation;
 }
 
-bool ExynosDisplay::isSourceCropfSupported(hwc_layer_1_t layer __unused)
+bool ExynosDisplay::isSourceCropfSupported(hwc_layer_1_t layer)
 {
-#if 0
     private_handle_t *handle = private_handle_t::dynamicCast(layer.handle);
     unsigned int bpp = formatToBpp(handle->format);
 
     /* HACK: Disable overlay if the layer have float position or size */
+#if 0
     if ((isFormatRgb(handle->format) && (bpp == 32)) ||
          isFormatYUV420(handle->format))
         return true;
@@ -3407,6 +3449,11 @@ bool ExynosDisplay::isSourceCropfSupported(hwc_layer_1_t layer __unused)
 #if 0
 bool ExynosDisplay::checkConfigChanged(struct decon_win_config_data &lastConfigData, struct decon_win_config_data &newConfigData)
 {
+    if (mType == EXYNOS_PRIMARY_DISPLAY) {
+        /* HWC doesn't skip WIN_CONFIG if other display is connected */
+        if ((mHwc->mVirtualDisplayDevices > 0) || (mHwc->hdmi_hpd == true))
+            return true;
+    }
     for (size_t i = 0; i <= MAX_DECON_WIN; i++) {
         if ((lastConfigData.config[i].state != newConfigData.config[i].state) ||
                 (lastConfigData.config[i].fd_idma[0] != newConfigData.config[i].fd_idma[0]) ||
@@ -3496,7 +3543,7 @@ int ExynosDisplay::checkConfigValidation(decon_win_config *config)
                 if ((config[i].state == config[i].DECON_WIN_STATE_BUFFER) &&
                     (config[j].state == config[j].DECON_WIN_STATE_BUFFER)) {
                     if (config[i].idma_type == config[j].idma_type) {
-                        ALOGE("WIN_CONFIG error: duplicated dma(%d) between win%zu, win%zu",
+                        ALOGE("WIN_CONFIG error: duplicated dma(%d) between win%d, win%d",
                                 config[i].idma_type, i, j);
                         config[j].state = config[j].DECON_WIN_STATE_DISABLED;
                         flagValidConfig = false;
@@ -3507,13 +3554,13 @@ int ExynosDisplay::checkConfigValidation(decon_win_config *config)
                 (config[i].dst.x < 0) || (config[i].dst.y < 0)||
                 (config[i].dst.x + config[i].dst.w > (uint32_t)mXres) ||
                 (config[i].dst.y + config[i].dst.h > (uint32_t)mYres)) {
-                ALOGE("WIN_CONFIG error: invalid pos or size win%zu", i);
+                ALOGE("WIN_CONFIG error: invalid pos or size win%d", i);
                 config[i].state = config[i].DECON_WIN_STATE_DISABLED;
                 flagValidConfig = false;
             }
 
             if (i >= NUM_HW_WINDOWS) {
-                ALOGE("WIN_CONFIG error: invalid window number win%zu", i);
+                ALOGE("WIN_CONFIG error: invalid window number win%d", i);
                 config[i].state = config[i].DECON_WIN_STATE_DISABLED;
                 flagValidConfig = false;
             }
@@ -3528,9 +3575,5 @@ int ExynosDisplay::checkConfigValidation(decon_win_config *config)
 
 int ExynosDisplay::setPowerMode(int mode)
 {
-#if defined(S3CFB_POWER_MODE)
-    return ioctl(this->mDisplayFd, S3CFB_POWER_MODE, &mode);
-#else
-    return ioctl(this->mDisplayFd, FBIOBLANK, (mode == HWC_POWER_MODE_OFF ? FB_BLANK_POWERDOWN : FB_BLANK_UNBLANK));
-#endif
+    return ioctl(this->mDisplayFd, S3CFB_POWER_MODE, mode);
 }

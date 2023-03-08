@@ -4,7 +4,7 @@
 #include "ExynosHWCUtils.h"
 #include "ExynosMPPModule.h"
 #include "ExynosHWCDebug.h"
-#if defined(USES_DUAL_DISPLAY)
+#if defined(USES_SINGLE_DECON)
 #include "ExynosSecondaryDisplayModule.h"
 #endif
 
@@ -16,7 +16,7 @@ ExynosOverlayDisplay::ExynosOverlayDisplay(int __unused numMPPs, struct exynos5_
     :   ExynosDisplay(EXYNOS_PRIMARY_DISPLAY, pdev)
 {
     this->mHwc = pdev;
-#ifndef USES_DUAL_DISPLAY
+#if !defined(USES_SINGLE_DECON) && !defined(USES_TWO_DECON)
     mInternalDMAs.add(IDMA_G0);
 #endif
     mInternalDMAs.add(IDMA_G1);
@@ -25,7 +25,7 @@ ExynosOverlayDisplay::ExynosOverlayDisplay(int __unused numMPPs, struct exynos5_
 void ExynosOverlayDisplay::doPreProcessing(hwc_display_contents_1_t* contents)
 {
     mInternalDMAs.clear();
-#ifndef USES_DUAL_DISPLAY
+#if !defined(USES_SINGLE_DECON) && !defined(USES_TWO_DECON)
     mInternalDMAs.add(IDMA_G0);
 #endif
     mInternalDMAs.add(IDMA_G1);
@@ -36,7 +36,7 @@ ExynosOverlayDisplay::~ExynosOverlayDisplay()
 {
 }
 
-#if defined(USES_DUAL_DISPLAY)
+#if defined(USES_SINGLE_DECON)
 int ExynosOverlayDisplay::set_dual(hwc_display_contents_1_t *contentsPrimary, hwc_display_contents_1_t *contentsSecondary)
 {
     hwc_layer_1_t *fb_layer = NULL;

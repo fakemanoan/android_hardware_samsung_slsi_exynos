@@ -27,10 +27,10 @@ include $(CLEAR_VARS)
 
 LOCAL_PRELINK_MODULE := false
 LOCAL_MODULE_RELATIVE_PATH := hw
-LOCAL_SHARED_LIBRARIES := liblog libion libcutils libEGL libGLESv1_CM libhardware \
+LOCAL_SHARED_LIBRARIES := liblog libcutils libEGL libGLESv1_CM libhardware \
 	libhardware_legacy libutils libsync \
 	libexynosv4l2 libexynosutils libhwcutils libexynosdisplay libhdmi \
-	libmpp libbfqio
+	libmpp
 #libMcClient
 
 ifeq ($(BOARD_USES_FIMC), true)

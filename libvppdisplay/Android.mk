@@ -16,7 +16,7 @@ LOCAL_PATH:= $(call my-dir)
 include $(CLEAR_VARS)
 
 LOCAL_PRELINK_MODULE := false
-LOCAL_SHARED_LIBRARIES := liblog libion libutils libcutils libexynosutils \
+LOCAL_SHARED_LIBRARIES := liblog libutils libcutils libexynosutils \
 	libexynosv4l2 libsync libhwcutils
 #ifeq ($(BOARD_USES_FIMC), true)
 #LOCAL_SHARED_LIBRARIES += libexynosfimc
@@ -70,6 +70,7 @@ endif
 
 include $(TOP)/hardware/samsung_slsi/$(TARGET_SOC)/libdisplaymodule/Android.mk
 
+LOCAL_MODULE_TAGS := eng
 LOCAL_MODULE := libexynosdisplay
 
 include $(TOP)/hardware/samsung_slsi/exynos/BoardConfigCFlags.mk

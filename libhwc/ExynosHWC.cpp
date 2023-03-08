@@ -15,7 +15,6 @@
  */
 #define ATRACE_TAG ATRACE_TAG_GRAPHICS
 
-#include <bfqio/bfqio.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -42,7 +41,7 @@ class ExynosHWCService;
 #include "ExynosOverlayDisplay.h"
 #include "ExynosExternalDisplayModule.h"
 #include "ExynosPrimaryDisplay.h"
-#if defined(USES_DUAL_DISPLAY)
+#if (defined(USES_SINGLE_DECON))||(defined(USES_TWO_DECON))
 #include "ExynosSecondaryDisplayModule.h"
 #endif
 #ifdef USES_VIRTUAL_DISPLAY
@@ -240,14 +239,20 @@ int exynos5_prepare(hwc_composer_device_1_t *dev,
 
     exynos5_hwc_composer_device_1_t *pdev =
             (exynos5_hwc_composer_device_1_t *)dev;
-#if defined(USES_DUAL_DISPLAY)
+#if (defined(USES_SINGLE_DECON))||(defined(USES_TWO_DECON))
     hwc_display_contents_1_t *fimd_contents = displays[HWC_DISPLAY_PRIMARY0];
-    hwc_display_contents_1_t *fimd_contents1 = displays[HWC_DISPLAY_PRIMARY1];
+	hwc_display_contents_1_t *fimd_contents1 = NULL;
+    if(pdev->mDualDisplayFlag)
+    	fimd_contents1 = displays[HWC_DISPLAY_PRIMARY1];	
 #else
     hwc_display_contents_1_t *fimd_contents = displays[HWC_DISPLAY_PRIMARY];
 #endif
 
     hwc_display_contents_1_t *hdmi_contents = displays[HWC_DISPLAY_EXTERNAL];
+#if defined(USES_TWO_DECON)
+	if(pdev->mDualDisplayFlag)
+		hdmi_contents = NULL;
+#endif
 #ifdef USES_VIRTUAL_DISPLAY
     hwc_display_contents_1_t *virtual_contents = displays[HWC_DISPLAY_VIRTUAL];
     if (virtual_contents == NULL)
@@ -264,7 +269,7 @@ int exynos5_prepare(hwc_composer_device_1_t *dev,
     pdev->totPixels = 0;
     pdev->incomingPixels = 0;
 
-#if defined(USES_DUAL_DISPLAY)
+#if (defined(USES_SINGLE_DECON))||(defined(USES_TWO_DECON))
     if (pdev->hdmi_hpd || (fimd_contents1 == NULL) ||
         (fimd_contents1->numHwLayers <= 1)) {
         if (pdev->secondaryDisplay->mEnabled)
@@ -274,7 +279,7 @@ int exynos5_prepare(hwc_composer_device_1_t *dev,
 
     pdev->externalDisplay->setHdmiStatus(pdev->hdmi_hpd);
 
-#if defined(USES_DUAL_DISPLAY)
+#if (defined(USES_SINGLE_DECON))||(defined(USES_TWO_DECON))
     if (!pdev->hdmi_hpd && fimd_contents1 &&
         (fimd_contents1->numHwLayers > 1)) {
         if (!pdev->secondaryDisplay->mEnabled)
@@ -305,12 +310,12 @@ int exynos5_prepare(hwc_composer_device_1_t *dev,
         if (err)
             return err;
     }
-#if defined(USES_DUAL_DISPLAY)
-    if ((pdev->hdmi_hpd == false) && fimd_contents1) {
-        android::Mutex::Autolock lock(pdev->secondaryDisplay->mLayerInfoMutex);
-        int err = pdev->secondaryDisplay->prepare(fimd_contents1);
-        if (err)
-            return err;
+#if (defined(USES_SINGLE_DECON))||(defined(USES_TWO_DECON))
+    if ((pdev->hdmi_hpd == false) && fimd_contents1) {		
+        	android::Mutex::Autolock lock(pdev->secondaryDisplay->mLayerInfoMutex);
+        	int err = pdev->secondaryDisplay->prepare(fimd_contents1);
+        	if (err)
+            	return err;
     }
 #endif
 
@@ -339,20 +344,26 @@ int exynos5_set(struct hwc_composer_device_1 *dev,
 
     exynos5_hwc_composer_device_1_t *pdev =
             (exynos5_hwc_composer_device_1_t *)dev;
-#if defined(USES_DUAL_DISPLAY)
+#if (defined(USES_SINGLE_DECON))||(defined(USES_TWO_DECON))
     hwc_display_contents_1_t *fimd_contents = displays[HWC_DISPLAY_PRIMARY0];
-    hwc_display_contents_1_t *fimd_contents1 = displays[HWC_DISPLAY_PRIMARY1];
+	hwc_display_contents_1_t *fimd_contents1 = NULL;
+    if(pdev->mDualDisplayFlag)
+    	fimd_contents1 = displays[HWC_DISPLAY_PRIMARY1];	
 #else
     hwc_display_contents_1_t *fimd_contents = displays[HWC_DISPLAY_PRIMARY];
 #endif
     hwc_display_contents_1_t *hdmi_contents = displays[HWC_DISPLAY_EXTERNAL];
+#if defined(USES_TWO_DECON)
+	if(pdev->mDualDisplayFlag)
+		hdmi_contents = NULL;
+#endif
     int fimd_err = 0, hdmi_err = 0;
 #ifdef USES_VIRTUAL_DISPLAY
     int virtual_err = 0;
     hwc_display_contents_1_t *virtual_contents = displays[HWC_DISPLAY_VIRTUAL];
 #endif
 
-#if defined(USES_DUAL_DISPLAY)
+#if defined(USES_SINGLE_DECON)
     if ((pdev->hdmi_hpd == false) && fimd_contents1) {
         hdmi_err = pdev->secondaryDisplay->set(fimd_contents1);
     }
@@ -360,7 +371,7 @@ int exynos5_set(struct hwc_composer_device_1 *dev,
 
     if (fimd_contents) {
         android::Mutex::Autolock lock(pdev->primaryDisplay->mLayerInfoMutex);
-#if defined(USES_DUAL_DISPLAY)
+#if defined(USES_SINGLE_DECON)
         fimd_err = pdev->primaryDisplay->set_dual(fimd_contents, fimd_contents1);
 #else
         fimd_err = pdev->primaryDisplay->set(fimd_contents);
@@ -396,6 +407,12 @@ int exynos5_set(struct hwc_composer_device_1 *dev,
             pdev->externalDisplay->mMPPs[0]->mS3DMode = S3D_NONE;
 #endif
     }
+
+#if defined(USES_TWO_DECON)
+    if ((pdev->hdmi_hpd == false) && fimd_contents1) {
+        hdmi_err = pdev->secondaryDisplay->set(fimd_contents1);
+    }
+#endif
 
 #ifdef USES_VIRTUAL_DISPLAY
     if (virtual_contents && fimd_contents)
@@ -522,8 +539,8 @@ void handle_hdmi_uevent(struct exynos5_hwc_composer_device_1_t *pdev,
         pdev->procs->hotplug(pdev->procs, HWC_DISPLAY_EXTERNAL, pdev->hdmi_hpd);
 }
 
-void handle_tui_uevent(struct exynos5_hwc_composer_device_1_t *pdev __unused,
-        const char *buff __unused, int len __unused)
+void handle_tui_uevent(struct exynos5_hwc_composer_device_1_t *pdev,
+        const char *buff, int len)
 {
 #ifdef USES_VPP
 #ifdef DISABLE_IDMA_SECURE
@@ -599,10 +616,8 @@ void *hwc_update_stat_thread(void *data)
         usleep(100000);
         if (event_cnt == pdev->update_event_cnt) {
             if (pdev->primaryDisplay->getCompModeSwitch() == HWC_2_GLES) {
-                if ((pdev->procs) && (pdev->procs->invalidate)) {
-                    pdev->update_event_cnt = 0;
+                if ((pdev->procs) && (pdev->procs->invalidate))
                     pdev->procs->invalidate(pdev->procs);
-                }
             }
         }
     }
@@ -627,12 +642,7 @@ void *hwc_vsync_thread(void *data)
     char uevent_desc[4096];
     memset(uevent_desc, 0, sizeof(uevent_desc));
 
-    struct sched_param sched_param = {0};
-    sched_param.sched_priority = 5;
-    if (sched_setscheduler(gettid(), SCHED_FIFO, &sched_param) != 0) {
-        ALOGE("Couldn't set SCHED_FIFO for hwc_vsync");
-    }
-    android_set_rt_ioprio(0, 1);
+    setpriority(PRIO_PROCESS, 0, HAL_PRIORITY_URGENT_DISPLAY);
 
     uevent_init();
 
@@ -705,6 +715,7 @@ void *hwc_vsync_thread(void *data)
 int exynos5_blank(struct hwc_composer_device_1 *dev, int disp, int blank)
 {
     ATRACE_CALL();
+    int fence = 0;
     struct exynos5_hwc_composer_device_1_t *pdev =
             (struct exynos5_hwc_composer_device_1_t *)dev;
 #ifdef SKIP_DISPLAY_BLANK_CTRL
@@ -740,24 +751,26 @@ int exynos5_blank(struct hwc_composer_device_1 *dev, int disp, int blank)
 #endif
         pdev->primaryDisplay->mBlanked = !!blank;
 
-        /* Check if the thread is enabled before calling pthread_kill as we will seg fault otherwise */
-        if(pdev->update_stat_thread_flag == true) {
-            if (pthread_kill(pdev->update_stat_thread, 0) != ESRCH) { //check if the thread is alive
-               if (fb_blank == FB_BLANK_POWERDOWN) {
-                    pdev->update_stat_thread_flag = false;
-                    pthread_join(pdev->update_stat_thread, 0);
-                }
+        if (pthread_kill(pdev->update_stat_thread, 0) != ESRCH) { //check if the thread is alive
+           if (fb_blank == FB_BLANK_POWERDOWN) {
+                pdev->update_stat_thread_flag = false;
+                pthread_join(pdev->update_stat_thread, 0);
             }
         } else { // thread is not alive
             if (fb_blank == FB_BLANK_UNBLANK && pdev->hwc_ctrl.dynamic_recomp_mode == true)
                 exynos5_create_update_stat_thread(pdev);
         }
-#if defined(USES_DUAL_DISPLAY)
-        struct decon_dual_display_blank_data blank_data;
-        memset(&blank_data, 0, sizeof(blank_data));
-        blank_data.display_type = blank_data.DECON_PRIMARY_DISPLAY;
-        blank_data.blank = fb_blank;
-        int err = ioctl(pdev->primaryDisplay->mDisplayFd, S3CFB_DUAL_DISPLAY_BLANK, &blank_data);
+#if defined(USES_SINGLE_DECON)
+		int err = 0;
+		if(pdev->mDualDisplayFlag){
+	        struct decon_dual_display_blank_data blank_data;
+	        memset(&blank_data, 0, sizeof(blank_data));
+	        blank_data.display_type = blank_data.DECON_PRIMARY_DISPLAY;
+	        blank_data.blank = fb_blank;
+	        err = ioctl(pdev->primaryDisplay->mDisplayFd, S3CFB_DUAL_DISPLAY_BLANK, &blank_data);
+		}else{
+			err = ioctl(pdev->primaryDisplay->mDisplayFd, FBIOBLANK, fb_blank);
+		}
 #else
         int err = ioctl(pdev->primaryDisplay->mDisplayFd, FBIOBLANK, fb_blank);
 #endif
@@ -772,20 +785,83 @@ int exynos5_blank(struct hwc_composer_device_1 *dev, int disp, int blank)
         }
         break;
     }
-#if defined(USES_DUAL_DISPLAY)
-    case HWC_DISPLAY_PRIMARY1: {
-        int fb_blank = blank ? FB_BLANK_POWERDOWN : FB_BLANK_UNBLANK;
-	/* To do: Should be implemented */
-        pdev->secondaryDisplay->mBlanked = !!blank;
-        struct decon_dual_display_blank_data blank_data;
-        memset(&blank_data, 0, sizeof(blank_data));
-        blank_data.display_type = blank_data.DECON_SECONDARY_DISPLAY;
-        blank_data.blank = fb_blank;
-        int err = ioctl(pdev->primaryDisplay->mDisplayFd, S3CFB_DUAL_DISPLAY_BLANK, &blank_data);
+#if defined(USES_SINGLE_DECON)
+    case HWC_DISPLAY_PRIMARY1: 
+		if(pdev->mDualDisplayFlag){
+	        int fb_blank = blank ? FB_BLANK_POWERDOWN : FB_BLANK_UNBLANK;
+		/* To do: Should be implemented */
+	        pdev->secondaryDisplay->mBlanked = !!blank;
+	        struct decon_dual_display_blank_data blank_data;
+	        memset(&blank_data, 0, sizeof(blank_data));
+	        blank_data.display_type = blank_data.DECON_SECONDARY_DISPLAY;
+	        blank_data.blank = fb_blank;
+	        int err = ioctl(pdev->primaryDisplay->mDisplayFd, S3CFB_DUAL_DISPLAY_BLANK, &blank_data);
         break;
-    }
+    }else{//HDMI
+#if !defined(HDMI_ON_IN_SUSPEND) && !defined(CHANGE_POWEROFF_SEQ)
+	        if (pdev->hdmi_hpd) {
+	            if (blank && !pdev->externalDisplay->mBlanked) {
+	                pdev->externalDisplay->disable();
+	            }
+	            pdev->externalDisplay->mBlanked = !!blank;
+	        }
+#else
+	        fence = pdev->externalDisplay->clearDisplay();
+	        if (fence >= 0)
+	            close(fence);
+	        pdev->externalDisplay->mBlanked = !!blank;
 #endif
+    	}
+#endif
+#if defined(USES_TWO_DECON)
     case HWC_DISPLAY_EXTERNAL:
+    //case HWC_DISPLAY_PRIMARY1:		
+		if(pdev->mDualDisplayFlag){//LCD1
+        int fb_blank = blank ? FB_BLANK_POWERDOWN : FB_BLANK_UNBLANK;
+        if (pdev->secondaryDisplay->mDisplayFd == -1)
+            pdev->secondaryDisplay->mDisplayFd = open("/dev/graphics/fb1", O_RDWR);
+		
+        if (fb_blank == FB_BLANK_POWERDOWN) {
+            int fence = pdev->secondaryDisplay->clearDisplay();
+            if (fence < 0) {
+                HLOGE("error clearing primary display");
+            } else {
+                close(fence);
+            }
+        }
+
+       int err = ioctl(pdev->secondaryDisplay->mDisplayFd, FBIOBLANK, fb_blank);
+        if (err < 0) {
+            if (errno == EBUSY)
+                ALOGI("secondary dispaly %sblank ioctl failed (display already %sblanked)",
+                        blank ? "" : "un", blank ? "" : "un");
+            else
+                ALOGE("secondary dispaly %sblank ioctl failed: %s", blank ? "" : "un",
+                        strerror(errno));
+            return -errno;
+        }
+        pdev->secondaryDisplay->mBlanked = !!blank;
+        break;
+    }else{//HDMI
+#if !defined(HDMI_ON_IN_SUSPEND) && !defined(CHANGE_POWEROFF_SEQ)
+	        if (pdev->hdmi_hpd) {
+	            if (blank && !pdev->externalDisplay->mBlanked) {
+	                pdev->externalDisplay->disable();
+	            }
+	            pdev->externalDisplay->mBlanked = !!blank;
+	        }
+#else
+	        fence = pdev->externalDisplay->clearDisplay();
+	        if (fence >= 0)
+	            close(fence);
+	        pdev->externalDisplay->mBlanked = !!blank;
+#endif
+    	}
+        break;
+#endif/*USES_TWO_DECON*/	
+
+#if !defined(USES_SINGLE_DECON) && !defined(USES_TWO_DECON)
+		case HWC_DISPLAY_EXTERNAL:
 #if !defined(HDMI_ON_IN_SUSPEND) && !defined(CHANGE_POWEROFF_SEQ)
         if (pdev->hdmi_hpd) {
             if (blank && !pdev->externalDisplay->mBlanked) {
@@ -800,7 +876,7 @@ int exynos5_blank(struct hwc_composer_device_1 *dev, int disp, int blank)
         pdev->externalDisplay->mBlanked = !!blank;
 #endif
         break;
-
+#endif
     default:
         return -EINVAL;
 
@@ -830,11 +906,13 @@ void exynos5_dump(hwc_composer_device_1* dev, char *buff, int buff_len)
         result.append("External device's config information\n");
         pdev->externalDisplay->dump(result);
     }
-#if defined(USES_DUAL_DISPLAY)
+#if (defined(USES_SINGLE_DECON))||(defined(USES_TWO_DECON))
     else {
-        result.append("\n");
-        result.append("Secondary device's config information\n");
-        pdev->secondaryDisplay->dump(result);
+		if(pdev->mDualDisplayFlag){		
+	        result.append("\n");
+	        result.append("Secondary device's config information\n");
+	        pdev->secondaryDisplay->dump(result);
+		}
     }
 #endif
 #ifdef USES_VIRTUAL_DISPLAY_DECON_EXT_WB
@@ -858,12 +936,14 @@ void exynos5_dump(hwc_composer_device_1* dev, char *buff, int buff_len)
         result.append("External device's layer information\n");
         pdev->externalDisplay->dumpLayerInfo(result);
     }
-#if defined(USES_DUAL_DISPLAY)
+#if (defined(USES_SINGLE_DECON))||(defined(USES_TWO_DECON))
     else {
-        android::Mutex::Autolock lock(pdev->secondaryDisplay->mLayerInfoMutex);
-        result.append("\n");
-        result.append("Secondary device's layer information\n");
-        pdev->secondaryDisplay->dumpLayerInfo(result);
+		if(pdev->mDualDisplayFlag){		
+	        android::Mutex::Autolock lock(pdev->secondaryDisplay->mLayerInfoMutex);
+	        result.append("\n");
+	        result.append("Secondary device's layer information\n");
+	        pdev->secondaryDisplay->dumpLayerInfo(result);
+		}
     }
 #endif
 #if USES_VIRTUAL_DISPLAY_DECON_EXT_WB
@@ -887,15 +967,33 @@ int exynos5_getDisplayConfigs(struct hwc_composer_device_1 *dev,
     if (*numConfigs == 0)
         return 0;
 
-#if defined(USES_DUAL_DISPLAY)
+#if (defined(USES_SINGLE_DECON))||(defined(USES_TWO_DECON))
     if (disp == HWC_DISPLAY_PRIMARY0) {
         configs[0] = 0;
         *numConfigs = 1;
         return 0;
-    } else if (disp == HWC_DISPLAY_PRIMARY1) {
-        configs[0] = 0;
-        *numConfigs = 1;
-        return 0;
+    } else if (disp == HWC_DISPLAY_PRIMARY1) {//also (disp == HWC_DISPLAY_EXTERNAL).
+    	//need to check if dual display and hdmi work at the same time.
+        if(pdev->mDualDisplayFlag){//LCD1    	
+	        configs[0] = 0;
+	        *numConfigs = 1;
+	        return 0;
+		}else{//HDMI
+			if (!pdev->hdmi_hpd) {
+				return -EINVAL;
+			}
+			if (hwcHasApiVersion((hwc_composer_device_1_t*)dev, HWC_DEVICE_API_VERSION_1_4))
+				err = pdev->externalDisplay->getDisplayConfigs(configs, numConfigs);
+			else {
+				err = pdev->externalDisplay->getConfig();
+				configs[0] = 0;
+				*numConfigs = 1;
+			}
+			if (err) {
+				return -EINVAL;
+			}
+			return 0;
+		}
 #else
     if (disp == HWC_DISPLAY_PRIMARY) {
         configs[0] = 0;
@@ -962,14 +1060,23 @@ int exynos5_getDisplayAttributes(struct hwc_composer_device_1 *dev,
                    (struct exynos5_hwc_composer_device_1_t *)dev;
 
     for (int i = 0; attributes[i] != HWC_DISPLAY_NO_ATTRIBUTE; i++) {
-#if defined(USES_DUAL_DISPLAY)
+#if (defined(USES_SINGLE_DECON))||(defined(USES_TWO_DECON))
         if (disp == HWC_DISPLAY_PRIMARY0)
             values[i] = pdev->primaryDisplay->getDisplayAttributes(attributes[i]);
-        else if (disp == HWC_DISPLAY_PRIMARY1)
-            values[i] = pdev->secondaryDisplay->getDisplayAttributes(attributes[i]);
+        else if (disp == HWC_DISPLAY_PRIMARY1){			
+	    	//need to check if dual display and hdmi work at the same time.    	
+			if(pdev->mDualDisplayFlag){//LCD1
+	            values[i] = pdev->secondaryDisplay->getDisplayAttributes(attributes[i]);
+	        }else{//HDMI
+	            if (hwcHasApiVersion((hwc_composer_device_1_t*)dev, HWC_DEVICE_API_VERSION_1_4))
+	                values[i] = pdev->externalDisplay->getDisplayAttributes(attributes[i], config);
+	            else
+	                values[i] = exynos5_hdmi_attribute(pdev, attributes[i]);        
+	        }
+    	}
 #else
         if (disp == HWC_DISPLAY_PRIMARY)
-            values[i] = pdev->primaryDisplay->getDisplayAttributes(attributes[i], config);
+            values[i] = pdev->primaryDisplay->getDisplayAttributes(attributes[i]);
 #endif
         else if (disp == HWC_DISPLAY_EXTERNAL) {
             if (hwcHasApiVersion((hwc_composer_device_1_t*)dev, HWC_DEVICE_API_VERSION_1_4))
@@ -1048,7 +1155,7 @@ int exynos_setActiveConfig(struct hwc_composer_device_1* dev, int disp, int inde
     return -1;
 }
 
-int exynos_setCursorPositionAsync(struct hwc_composer_device_1 *dev __unused, int disp __unused, int x_pos __unused, int y_pos __unused)
+int exynos_setCursorPositionAsync(struct hwc_composer_device_1 *dev, int disp, int x_pos, int y_pos)
 {
     return 0;
 }
@@ -1056,6 +1163,7 @@ int exynos_setCursorPositionAsync(struct hwc_composer_device_1 *dev __unused, in
 int exynos_setPowerMode(struct hwc_composer_device_1* dev, int disp, int mode)
 {
     ATRACE_CALL();
+    int fence = 0;
     struct exynos5_hwc_composer_device_1_t *pdev =
             (struct exynos5_hwc_composer_device_1_t *)dev;
 #ifdef SKIP_DISPLAY_BLANK_CTRL
@@ -1071,6 +1179,9 @@ int exynos_setPowerMode(struct hwc_composer_device_1* dev, int disp, int mode)
         fb_blank = FB_BLANK_UNBLANK;
         blank = 0;
     }
+	char value1[PROPERTY_VALUE_MAX];
+	property_get("persist.hwc.alwayson", value1, "0");
+	bool flag = atoi(value1);
 
     switch (disp) {
     case HWC_DISPLAY_PRIMARY: {
@@ -1088,12 +1199,8 @@ int exynos_setPowerMode(struct hwc_composer_device_1* dev, int disp, int mode)
             return pdev->primaryDisplay->setPowerMode(mode);
         }
 #endif
-        if (fb_blank == FB_BLANK_POWERDOWN) {
-            int fence = -1;
-#if defined(USES_DUAL_DISPLAY)
-            if (pdev->secondaryDisplay->mBlanked)
-#endif
-                fence = pdev->primaryDisplay->clearDisplay();
+        if (fb_blank == FB_BLANK_POWERDOWN && !flag) {
+            int fence = pdev->primaryDisplay->clearDisplay();
             if (fence < 0) {
                 HLOGE("error clearing primary display");
             } else {
@@ -1118,26 +1225,48 @@ int exynos_setPowerMode(struct hwc_composer_device_1* dev, int disp, int mode)
 #endif
         pdev->primaryDisplay->mBlanked = !!blank;
 
-        /* Check if the thread is enabled before calling pthread_kill as we will seg fault otherwise */
-        if(pdev->update_stat_thread_flag == true) {
-            if (pthread_kill(pdev->update_stat_thread, 0) != ESRCH) { //check if the thread is alive
-               if (fb_blank == FB_BLANK_POWERDOWN) {
-                    pdev->update_stat_thread_flag = false;
-                    pthread_join(pdev->update_stat_thread, 0);
-                }
+        if (pthread_kill(pdev->update_stat_thread, 0) != ESRCH) { //check if the thread is alive
+           if (fb_blank == FB_BLANK_POWERDOWN) {
+                pdev->update_stat_thread_flag = false;
+                pthread_join(pdev->update_stat_thread, 0);
             }
         } else { // thread is not alive
             if (fb_blank == FB_BLANK_UNBLANK && pdev->hwc_ctrl.dynamic_recomp_mode == true)
                 exynos5_create_update_stat_thread(pdev);
         }
-#if defined(USES_DUAL_DISPLAY)
-        struct decon_dual_display_blank_data blank_data;
-        memset(&blank_data, 0, sizeof(blank_data));
-        blank_data.display_type = blank_data.DECON_PRIMARY_DISPLAY;
-        blank_data.blank = fb_blank;
-        int err = ioctl(pdev->primaryDisplay->mDisplayFd, S3CFB_DUAL_DISPLAY_BLANK, &blank_data);
+#if defined(USES_SINGLE_DECON)
+		int err = 0;
+		if(pdev->mDualDisplayFlag){
+	        struct decon_dual_display_blank_data blank_data;
+	        memset(&blank_data, 0, sizeof(blank_data));
+	        blank_data.display_type = blank_data.DECON_PRIMARY_DISPLAY;
+	        blank_data.blank = fb_blank;
+	        err = ioctl(pdev->primaryDisplay->mDisplayFd, S3CFB_DUAL_DISPLAY_BLANK, &blank_data);
+		}else{
+		
+		if(flag){
+			 int param = (fb_blank == FB_BLANK_POWERDOWN)? DECON_POWER_MODE_DOZE_SUSPEND: DECON_POWER_MODE_DOZE;
+			ALOGI("S3CFB_POWER_MODE mode = %d",param);
+			 err = ioctl(pdev->primaryDisplay->mDisplayFd, S3CFB_POWER_MODE, param);
+			 
+		}else{
+			ALOGI("FBIOBLANK mode = %d",fb_blank);			
+			err = ioctl(pdev->primaryDisplay->mDisplayFd, FBIOBLANK, fb_blank);
+		}
+			
+		}
+		
 #else
-        int err = ioctl(pdev->primaryDisplay->mDisplayFd, FBIOBLANK, fb_blank);
+        int err = 0;
+		if(flag){
+			 int param = (fb_blank == FB_BLANK_POWERDOWN)? DECON_POWER_MODE_DOZE_SUSPEND: DECON_POWER_MODE_DOZE;
+			ALOGI("S3CFB_POWER_MODE mode = %d",param);
+			 err = ioctl(pdev->primaryDisplay->mDisplayFd, S3CFB_POWER_MODE, param);
+			 
+		}else{
+			ALOGI("FBIOBLANK mode = %d",fb_blank);			
+			err = ioctl(pdev->primaryDisplay->mDisplayFd, FBIOBLANK, fb_blank);
+		}
 #endif
         if (err < 0) {
             if (errno == EBUSY)
@@ -1150,28 +1279,81 @@ int exynos_setPowerMode(struct hwc_composer_device_1* dev, int disp, int mode)
         }
         break;
     }
-#if defined(USES_DUAL_DISPLAY)
+#if defined(USES_SINGLE_DECON)
     case HWC_DISPLAY_PRIMARY1: {
-        if (fb_blank == FB_BLANK_POWERDOWN) {
-            int fence = -1;
-            if (pdev->primaryDisplay->mBlanked)
-                fence = pdev->primaryDisplay->clearDisplay();
-            if (fence < 0) {
-                HLOGE("error clearing primary display");
-            } else {
-                close(fence);
-            }
-        }
-        /* To do: Should be implemented */
-        pdev->secondaryDisplay->mBlanked = !!blank;
-        struct decon_dual_display_blank_data blank_data;
-        memset(&blank_data, 0, sizeof(blank_data));
-        blank_data.display_type = blank_data.DECON_SECONDARY_DISPLAY;
-        blank_data.blank = fb_blank;
-        int err = ioctl(pdev->primaryDisplay->mDisplayFd, S3CFB_DUAL_DISPLAY_BLANK, &blank_data);
+		if(pdev->mDualDisplayFlag){
+	        /* To do: Should be implemented */
+	        pdev->secondaryDisplay->mBlanked = !!blank;
+	        struct decon_dual_display_blank_data blank_data;
+	        memset(&blank_data, 0, sizeof(blank_data));
+	        blank_data.display_type = blank_data.DECON_SECONDARY_DISPLAY;
+	        blank_data.blank = fb_blank;
+	        int err = ioctl(pdev->primaryDisplay->mDisplayFd, S3CFB_DUAL_DISPLAY_BLANK, &blank_data);
+		}else{
+#if !defined(HDMI_ON_IN_SUSPEND) && !defined(CHANGE_POWEROFF_SEQ)
+			if (pdev->hdmi_hpd) {
+				if (blank && !pdev->externalDisplay->mBlanked) {
+					pdev->externalDisplay->disable();
+				}
+				pdev->externalDisplay->mBlanked = !!blank;
+			}
+#else
+			fence = pdev->externalDisplay->clearDisplay();
+			if (fence >= 0)
+				close(fence);
+			pdev->externalDisplay->mBlanked = !!blank;
+#endif
+
+		}
         break;
     }
 #endif
+#if defined(USES_TWO_DECON)
+		case HWC_DISPLAY_PRIMARY1: 
+			if(pdev->mDualDisplayFlag){
+			int fb_blank = blank ? FB_BLANK_POWERDOWN : FB_BLANK_UNBLANK;
+			if (pdev->secondaryDisplay->mDisplayFd == -1)
+				pdev->secondaryDisplay->mDisplayFd = open("/dev/graphics/fb1", O_RDWR);
+
+			if (fb_blank == FB_BLANK_POWERDOWN) {
+				int fence = pdev->secondaryDisplay->clearDisplay();
+				if (fence < 0) {
+					HLOGE("error clearing primary display");
+				} else {
+					close(fence);
+				}
+			}
+			int err = ioctl(pdev->secondaryDisplay->mDisplayFd, FBIOBLANK, fb_blank);
+			if (err < 0) {
+				if (errno == EBUSY)
+					ALOGI("secondary dispaly %sblank ioctl failed (display already %sblanked)",
+							blank ? "" : "un", blank ? "" : "un");
+				else
+					ALOGE("secondary dispaly %sblank ioctl failed: %s", blank ? "" : "un",
+							strerror(errno));
+				return -errno;
+			}
+			pdev->secondaryDisplay->mBlanked = !!blank;
+			break;
+		}else{//HDMI
+#if !defined(HDMI_ON_IN_SUSPEND) && !defined(CHANGE_POWEROFF_SEQ)
+			if (pdev->hdmi_hpd) {
+				if (blank && !pdev->externalDisplay->mBlanked) {
+					pdev->externalDisplay->disable();
+				}
+				pdev->externalDisplay->mBlanked = !!blank;
+			}
+#else
+			fence = pdev->externalDisplay->clearDisplay();
+			if (fence >= 0)
+				close(fence);
+			pdev->externalDisplay->mBlanked = !!blank;
+#endif
+
+		}
+#endif/*USES_TWO_DECON*/
+
+#if !defined(USES_SINGLE_DECON) && !defined(USES_TWO_DECON)
     case HWC_DISPLAY_EXTERNAL:
 #if !defined(HDMI_ON_IN_SUSPEND) && !defined(CHANGE_POWEROFF_SEQ)
         if (pdev->hdmi_hpd) {
@@ -1187,6 +1369,7 @@ int exynos_setPowerMode(struct hwc_composer_device_1* dev, int disp, int mode)
         pdev->externalDisplay->mBlanked = !!blank;
 #endif
         break;
+#endif
 
     default:
         return -EINVAL;
@@ -1203,6 +1386,7 @@ int exynos5_open(const struct hw_module_t *module, const char *name,
 {
     int ret = 0;
     int refreshRate;
+    int sw_fd;
 
     if (strcmp(name, HWC_HARDWARE_COMPOSER)) {
         return -EINVAL;
@@ -1213,6 +1397,13 @@ int exynos5_open(const struct hw_module_t *module, const char *name,
     memset(dev, 0, sizeof(*dev));
 
     dev->primaryDisplay = new ExynosPrimaryDisplay(NUM_GSC_UNITS, dev);
+#if defined(USES_TWO_DECON)
+    dev->secondaryDisplay = new ExynosSecondaryDisplayModule(dev);
+    char value1[PROPERTY_VALUE_MAX];
+	property_get("persist.sf.dualdisplay", value1, "0");
+	dev->mDualDisplayFlag = atoi(value1);   
+	ALOGD("Compiled two-decon mode, enabled flag = %d",dev->mDualDisplayFlag);
+#endif
     dev->externalDisplay = new ExynosExternalDisplayModule(dev);
 #ifdef USES_VIRTUAL_DISPLAY
     dev->virtualDisplay = new ExynosVirtualDisplayModule(dev);
@@ -1231,6 +1422,9 @@ int exynos5_open(const struct hw_module_t *module, const char *name,
         goto err_get_module;
     }
     dev->externalDisplay->mAllocDevice = dev->primaryDisplay->mAllocDevice;
+#if defined(USES_TWO_DECON)
+    dev->secondaryDisplay->mAllocDevice = dev->primaryDisplay->mAllocDevice;
+#endif
 #ifdef USES_VIRTUAL_DISPLAY
     dev->virtualDisplay->mAllocDevice = dev->primaryDisplay->mAllocDevice;
 #endif
@@ -1282,7 +1476,11 @@ int exynos5_open(const struct hw_module_t *module, const char *name,
         refreshRate = 60;
     }
 
-#if defined(USES_DUAL_DISPLAY)
+#if defined(USES_SINGLE_DECON)
+    char value1[PROPERTY_VALUE_MAX];
+	property_get("persist.sf.dualdisplay", value1, "0");
+	dev->mDualDisplayFlag = atoi(value1);   
+	ALOGD("Compiled single-decon mode, enabled flag = %d", dev->mDualDisplayFlag);
     dev->primaryDisplay->mXres = 2 * lcd_xres;
 #else
     dev->primaryDisplay->mXres = lcd_xres;
@@ -1328,7 +1526,7 @@ int exynos5_open(const struct hw_module_t *module, const char *name,
         ALOGE("openHdmi fail");
     }
 
-#if defined(USES_DUAL_DISPLAY)
+#if defined(USES_SINGLE_DECON)
     dev->secondaryDisplay = new ExynosSecondaryDisplayModule(dev);
     dev->secondaryDisplay->mAllocDevice = dev->primaryDisplay->mAllocDevice;
 #endif
@@ -1409,6 +1607,11 @@ int exynos5_open(const struct hw_module_t *module, const char *name,
             dev->psrMode);
     ALOGI("Panel type = %d (0: Legacy, 1: DSC)\n",
             dev->panelType);
+
+    if (dev->psrMode == 2) {
+        refreshRate = 1000000000000LLU / (uint64_t(lcd_yres) * lcd_xres * info.pixclock);
+        dev->primaryDisplay->mVsyncPeriod  = 1000000000 / refreshRate;
+    }
 
 #ifdef USES_VPP
     dev->primaryDisplay->mPanelType = dev->panelType;
@@ -1506,6 +1709,8 @@ int exynos5_open(const struct hw_module_t *module, const char *name,
     if (dev->hwc_ctrl.dynamic_recomp_mode == true)
         exynos5_create_update_stat_thread(dev);
 
+    dev->mVirtualDisplayDevices = 0;
+
     return 0;
 
 err_vsync:
@@ -1518,7 +1723,7 @@ err_hdmi_open:
         close(dev->externalDisplay->mDisplayFd);
 err_ioctl:
     close(dev->primaryDisplay->mDisplayFd);
-#if defined(USES_DUAL_DISPLAY)
+#if (defined(USES_SINGLE_DECON))||(defined(USES_TWO_DECON))
     if (dev->secondaryDisplay->mDisplayFd > 0)
         close(dev->secondaryDisplay->mDisplayFd);
 #endif
@@ -1576,19 +1781,19 @@ int exynos5_close(hw_device_t *device)
 }
 
 static struct hw_module_methods_t exynos5_hwc_module_methods = {
-    .open = exynos5_open,
+    open: exynos5_open,
 };
 
 hwc_module_t HAL_MODULE_INFO_SYM = {
-    .common = {
-        .tag = HARDWARE_MODULE_TAG,
-        .module_api_version = HWC_MODULE_API_VERSION_0_1,
-        .hal_api_version = HARDWARE_HAL_API_VERSION,
-        .id = HWC_HARDWARE_MODULE_ID,
-        .name = "Samsung exynos5 hwcomposer module",
-        .author = "Samsung LSI",
-        .methods = &exynos5_hwc_module_methods,
-        .dso = 0,
-        .reserved = {0},
+    common: {
+        tag: HARDWARE_MODULE_TAG,
+        module_api_version: HWC_MODULE_API_VERSION_0_1,
+        hal_api_version: HARDWARE_HAL_API_VERSION,
+        id: HWC_HARDWARE_MODULE_ID,
+        name: "Samsung exynos5 hwcomposer module",
+        author: "Samsung LSI",
+        methods: &exynos5_hwc_module_methods,
+        dso: 0,
+        reserved: {0},
     }
 };

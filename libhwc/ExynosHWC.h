@@ -37,7 +37,7 @@
 #endif
 #include "ExynosDisplayResourceManagerModule.h"
 #else
-#include <decon-fb.h>
+#include <s3c-fb.h>
 #endif
 
 #include <EGL/egl.h>
@@ -171,6 +171,7 @@ const size_t NO_FB_NEEDED = NUM_HW_WINDOWS + 1;
 
 #ifndef FIMD_BW_OVERLAP_CHECK
 const size_t MAX_NUM_FIMD_DMA_CH = 2;
+#else
 const int FIMD_DMA_CH_IDX[S3C_FB_MAX_WIN] = {0, 1, 1, 1, 0};
 #endif
 
@@ -337,7 +338,7 @@ struct hwc_ctrl_t {
     int     dma_bw_balance_mode;
 };
 
-#if defined(G2D_COMPOSITION) || defined(USE_GRALLOC_FLAG_FOR_HDMI)
+#if defined(G2D_COMPOSITION)
 #include "FimgApi.h"
 #endif
 
@@ -351,8 +352,10 @@ struct exynos5_g2d_data_t {
 class ExynosPrimaryDisplay;
 class ExynosExternalDisplay;
 class ExynosVirtualDisplay;
-#if defined(USES_DUAL_DISPLAY)
+#if (defined(USES_SINGLE_DECON))||(defined(USES_TWO_DECON))
 class ExynosSecondaryDisplayModule;
+#define HWC_DISPLAY_PRIMARY0 0
+#define HWC_DISPLAY_PRIMARY1 1 
 #endif
 #ifdef USES_VPP
 class ExynosDisplayResourceManagerModule;
@@ -362,8 +365,9 @@ struct exynos5_hwc_composer_device_1_t {
     hwc_composer_device_1_t base;
 
     ExynosPrimaryDisplay    *primaryDisplay;
-#if defined(USES_DUAL_DISPLAY)
+#if (defined(USES_SINGLE_DECON))||(defined(USES_TWO_DECON))
     ExynosSecondaryDisplayModule    *secondaryDisplay;
+	bool					mDualDisplayFlag;
 #endif
     ExynosExternalDisplay    *externalDisplay;
     ExynosVirtualDisplay    *virtualDisplay;
@@ -381,6 +385,7 @@ struct exynos5_hwc_composer_device_1_t {
     pthread_t               vsync_thread;
     int                     force_gpu;
 
+    int mVirtualDisplayDevices;
     bool hdmi_hpd;
 
     int mHdmiPreset;
@@ -444,7 +449,6 @@ enum {
 
 enum {
     NO_DRM = 0,
-    NORMAL_DRM,
     SECURE_DRM,
 };
 

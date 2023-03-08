@@ -21,7 +21,7 @@
 #ifdef USES_VPP
 #include "ExynosPrimaryDisplay.h"
 #endif
-#if defined(USES_DUAL_DISPLAY)
+#if defined(USES_SINGLE_DECON)
 #include "ExynosSecondaryDisplayModule.h"
 #endif
 #ifdef USES_VIRTUAL_DISPLAY
@@ -59,6 +59,28 @@ ExynosHWCService::ExynosHWCService() :
 ExynosHWCService::~ExynosHWCService()
 {
    ALOGD_IF(HWC_SERVICE_DEBUG, "ExynosHWCService Destructor is called");
+}
+
+int ExynosHWCService::addVirtualDisplayDevice()
+{
+    ALOGD_IF(HWC_SERVICE_DEBUG, "%s", __func__);
+
+    mHWCCtx->mVirtualDisplayDevices++;
+
+    return NO_ERROR;
+}
+
+int ExynosHWCService::destroyVirtualDisplayDevice()
+{
+    ALOGD_IF(HWC_SERVICE_DEBUG, "%s", __func__);
+
+    mHWCCtx->mVirtualDisplayDevices--;
+    if (mHWCCtx->mVirtualDisplayDevices < 0) {
+        mHWCCtx->mVirtualDisplayDevices = 0;
+        return INVALID_OPERATION;
+    }
+
+    return NO_ERROR;
 }
 
 int ExynosHWCService::setWFDMode(unsigned int mode)
@@ -430,7 +452,7 @@ void ExynosHWCService::setHWCCtl(int ctrl, int val)
         break;
     case HWC_CTL_SECURE_DMA:
 #ifdef USES_VPP
-#if defined(USES_DUAL_DISPLAY)
+#if defined(USES_SINGLE_DECON)
         mHWCCtx->secondaryDisplay->mUseSecureDMA = (bool)val;
 #else
         mHWCCtx->primaryDisplay->mUseSecureDMA = (bool)val;

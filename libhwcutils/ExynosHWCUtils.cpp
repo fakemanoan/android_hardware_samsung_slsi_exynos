@@ -72,7 +72,7 @@ void dumpMPPImage(exynos_mpp_img &c)
     ALOGV("\tx = %u, y = %u, w = %u, h = %u, fw = %u, fh = %u",
             c.x, c.y, c.w, c.h, c.fw, c.fh);
     ALOGV("\tf = %u", c.format);
-    ALOGV("\taddr = {%lu, %lu, %lu}, rot = %u, cacheable = %u, drmMode = %u",
+    ALOGV("\taddr = {%d, %d, %d}, rot = %u, cacheable = %u, drmMode = %u",
             c.yaddr, c.uaddr, c.vaddr, c.rot, c.cacheable, c.drmMode);
     ALOGV("\tnarrowRgb = %u, acquireFenceFd = %d, releaseFenceFd = %d, mem_type = %u",
             c.narrowRgb, c.acquireFenceFd, c.releaseFenceFd, c.mem_type);
@@ -83,7 +83,7 @@ void dumpMPPImage(uint32_t type, exynos_mpp_img &c)
     HDEBUGLOGD(type, "\tx = %u, y = %u, w = %u, h = %u, fw = %u, fh = %u",
             c.x, c.y, c.w, c.h, c.fw, c.fh);
     HDEBUGLOGD(type, "\tf = %u", c.format);
-    HDEBUGLOGD(type, "\taddr = {%lu, %lu, %lu}, rot = %u, cacheable = %u, drmMode = %u",
+    HDEBUGLOGD(type, "\taddr = {%d, %d, %d}, rot = %u, cacheable = %u, drmMode = %u",
             c.yaddr, c.uaddr, c.vaddr, c.rot, c.cacheable, c.drmMode);
     HDEBUGLOGD(type, "\tnarrowRgb = %u, acquireFenceFd = %d, releaseFenceFd = %d, mem_type = %u",
             c.narrowRgb, c.acquireFenceFd, c.releaseFenceFd, c.mem_type);
@@ -228,14 +228,10 @@ uint8_t formatToBpp(int format)
 
 int getDrmMode(int flags)
 {
-    if (flags & GRALLOC_USAGE_PROTECTED) {
-        if (flags & GRALLOC_USAGE_PRIVATE_NONSECURE)
-            return NORMAL_DRM;
-        else
-            return SECURE_DRM;
-    } else {
+    if (flags & GRALLOC_USAGE_PROTECTED)
+        return SECURE_DRM;
+    else
         return NO_DRM;
-    }
 }
 
 int halFormatToV4L2Format(int format)
@@ -296,6 +292,9 @@ bool compareYuvLayerConfig(int videoLayers, uint32_t index,
         video_layer_config *pre_src_data, video_layer_config *pre_dst_data)
 {
     private_handle_t *src_handle = private_handle_t::dynamicCast(layer.handle);
+    buffer_handle_t dst_buf;
+    private_handle_t *dst_handle;
+    int ret = 0;
     bool reconfigure = 1;
 
     video_layer_config new_src_cfg, new_dst_cfg;

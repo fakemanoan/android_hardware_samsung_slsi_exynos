@@ -108,7 +108,7 @@ const struct deconFormat {
 
 enum {
     EXYNOS_PRIMARY_DISPLAY      =       0,
-#if defined(USES_DUAL_DISPLAY)
+#if (defined(USES_SINGLE_DECON))||(defined(USES_TWO_DECON))
     EXYNOS_SECONDARY_DISPLAY,
 #endif
     EXYNOS_EXTERNAL_DISPLAY,
@@ -220,7 +220,6 @@ class ExynosDisplay {
         int                      mMPPLayers;
         int                      mYuvLayers;
         bool                     mHasDrmSurface;
-        bool                     mLayersNeedScaling;
 
         bool                     mFbNeeded;
         size_t                   mFirstFb;
@@ -282,6 +281,9 @@ class ExynosDisplay {
         virtual bool isOverlaySupportedByIDMA(hwc_layer_1_t &layer, size_t index);
         virtual void getIDMAMinSize(hwc_layer_1_t &layer, int *w, int *h);
         bool checkConfigChanged(struct decon_win_config_data &lastConfigData, struct decon_win_config_data &newConfigData);
+
+        /* some platforms crash when composing overlays on certain DMA planes */
+        android::Vector<unsigned int> mSkipDMATypes;
 
 #if defined(USES_SINGLE_DECON) || defined(USES_TWO_DECON)
         bool   mDebugDualDisplayDisabled;

@@ -55,7 +55,6 @@ enum {
     eMPPExeedMinDstWidth          =     0x04000000,
     eMPPExeedMinDstHeight         =     0x08000000,
     eMPPUnsupportedCompression    =     0x10000000,
-    eMPPUnsupportedCSC            =     0x20000000,
 };
 
 enum {
@@ -79,7 +78,6 @@ enum {
 
 enum {
     MPP_BUFFER_NORMAL = 0,
-    MPP_BUFFER_NORMAL_DRM,
     MPP_BUFFER_SECURE_DRM,
     MPP_BUFFER_VIDEO_EXT,
 };
@@ -123,7 +121,6 @@ class ExynosMPP {
 
         /* Override these virtual functions in chip directory to handle per-chip differences */
         virtual bool isFormatSupportedByMPP(int format);
-        virtual bool isCSCSupportedByMPP(int src_format, int dst_format, uint32_t dataSpace);
         virtual bool isProcessingRequired(hwc_layer_1_t &layer, int format);
         virtual int isProcessingSupported(hwc_layer_1_t &layer, int dst_format);
         virtual int processM2M(hwc_layer_1_t &layer, int dstFormat, hwc_frect_t *sourceCrop, bool needBufferAlloc = true);
