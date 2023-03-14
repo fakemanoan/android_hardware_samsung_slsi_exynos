@@ -121,7 +121,6 @@ LOCAL_SRC_FILES := ExynosHWC.cpp
 
 LOCAL_MODULE := hwcomposer.$(TARGET_BOARD_PLATFORM)
 LOCAL_MODULE_TAGS := optional
-LOCAL_VENDOR_MODULE := true
 
 include $(TOP)/hardware/samsung_slsi/exynos/BoardConfigCFlags.mk
 include $(BUILD_SHARED_LIBRARY)

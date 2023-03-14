@@ -20,6 +20,4 @@ LOCAL_SHARED_LIBRARIES := liblog
 LOCAL_SRC_FILES := libcec.c
 
 LOCAL_MODULE := libcec
-LOCAL_VENDOR_MODULE := true
-
 include $(BUILD_SHARED_LIBRARY)
