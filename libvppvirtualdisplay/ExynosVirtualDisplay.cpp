@@ -295,10 +295,10 @@ int ExynosVirtualDisplay::postFrame(hwc_display_contents_1_t* contents)
                 android::String8 result;
                 ALOGW("window of layer %d was not assigned (window_index: %d)", i, window_index);
                 dumpContents(result, contents);
-                ALOGW(result.string());
+                ALOGW("%s", result.string());
                 result.clear();
                 dumpLayerInfo(result);
-                ALOGW(result.string());
+                ALOGW("%s", result.string());
             }
 
             continue;

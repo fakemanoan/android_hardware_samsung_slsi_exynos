@@ -449,6 +449,7 @@ enum {
 
 enum {
     NO_DRM = 0,
+    NORMAL_DRM,
     SECURE_DRM,
 };
 
