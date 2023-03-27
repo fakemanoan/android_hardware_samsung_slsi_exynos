@@ -1095,7 +1095,10 @@ bool ExynosDisplay::isOverlaySupported(hwc_layer_1_t &layer, size_t index, bool 
             if (internalMPP->mType == MPP_VG && layer.blending != HWC_BLENDING_NONE)
                 continue;
 #endif
-
+#ifdef MPP_VPP_G
+                             if (internalMPP->mType == MPP_VPP_G)
+                                 continue;
+#endif
             if (isBothMPPUsed) {
 #ifdef MPP_VPP_G
                 if (internalMPP->mType == MPP_VPP_G)
@@ -1226,7 +1229,10 @@ bool ExynosDisplay::isOverlaySupported(hwc_layer_1_t &layer, size_t index, bool 
             if (internalMPP->mType == MPP_VG && layer.blending != HWC_BLENDING_NONE)
                 continue;
 #endif
-
+#ifdef MPP_VPP_G
+                             if (internalMPP->mType == MPP_VPP_G)
+                                 continue;
+#endif
             /*
              * If MPP was assigned to other Device in previous frame
              * then doesn't assign it untill it is cleared
@@ -3122,6 +3128,11 @@ void ExynosDisplay::assignWindows(hwc_display_contents_1_t *contents)
 #ifdef MPP_VG_IS_BLEND_INCAPABLE
                             if (mInternalMPPs[j]->mType == MPP_VG && layer.blending != HWC_BLENDING_NONE)
                                 continue;
+#endif
+                            
+#ifdef MPP_VPP_G
+                             if (mInternalMPPs[j]->mType == MPP_VPP_G)
+                                 continue;
 #endif
                             if ((mInternalMPPs[j]->mState == MPP_STATE_FREE) &&
                                     ((mInternalMPPs[j]->mDisplay == NULL) || (mInternalMPPs[j]->mDisplay == this))) {
