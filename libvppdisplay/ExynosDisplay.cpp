@@ -3131,7 +3131,8 @@ void ExynosDisplay::assignWindows(hwc_display_contents_1_t *contents)
 #endif
                             
 #ifdef MPP_VPP_G
-                            
+                            if (mInternalMPPs[j]->mType == MPP_VPP_G && MPP_VPP_G_TYPE(mInternalMPPs[j]->mIndex) == IDMA_G2 && i != 6)
+                                 continue;
 #endif
                             if ((mInternalMPPs[j]->mState == MPP_STATE_FREE) &&
                                     ((mInternalMPPs[j]->mDisplay == NULL) || (mInternalMPPs[j]->mDisplay == this))) {
