@@ -1096,7 +1096,7 @@ bool ExynosDisplay::isOverlaySupported(hwc_layer_1_t &layer, size_t index, bool 
                 continue;
 #endif
 #ifdef MPP_VPP_G
-                             if (internalMPP->mType == MPP_VPP_G && MPP_VPP_G_TYPE(internalMPP->mIndex) == IDMA_G2)
+                             if (internalMPP->mType == MPP_VPP_G && MPP_VPP_G_TYPE(internalMPP->mIndex) == IDMA_G2 && index != 6)
                                  continue;
 #endif
             if (isBothMPPUsed) {
@@ -1230,7 +1230,7 @@ bool ExynosDisplay::isOverlaySupported(hwc_layer_1_t &layer, size_t index, bool 
                 continue;
 #endif
 #ifdef MPP_VPP_G
-                             if (internalMPP->mType == MPP_VPP_G && MPP_VPP_G_TYPE(internalMPP->mIndex) == IDMA_G2)
+                             if (internalMPP->mType == MPP_VPP_G && MPP_VPP_G_TYPE(internalMPP->mIndex) == IDMA_G2 && index != 6)
                                  continue;
 #endif
             /*
@@ -3131,8 +3131,7 @@ void ExynosDisplay::assignWindows(hwc_display_contents_1_t *contents)
 #endif
                             
 #ifdef MPP_VPP_G
-                             if (mInternalMPPs[j]->mType == MPP_VPP_G && MPP_VPP_G_TYPE(mInternalMPPs[j]->mIndex) == IDMA_G2)
-                                 continue;
+                            
 #endif
                             if ((mInternalMPPs[j]->mState == MPP_STATE_FREE) &&
                                     ((mInternalMPPs[j]->mDisplay == NULL) || (mInternalMPPs[j]->mDisplay == this))) {
