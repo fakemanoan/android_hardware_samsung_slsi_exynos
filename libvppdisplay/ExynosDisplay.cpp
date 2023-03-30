@@ -2479,6 +2479,10 @@ void ExynosDisplay::determineYuvOverlay(hwc_display_contents_1_t *contents)
                         if (supportedInternalMPP != NULL)
                             supportedInternalMPP->mState = MPP_STATE_ASSIGNED;
 
+                        if(supportedInternalMPP->mType == MPP_VPP_G && MPP_VPP_G_TYPE(supportedInternalMPP->mIndex) == IDMA_G2 && i != 6){
+                        
+                            
+                        }else{
                         mForceOverlayLayerIndex = i;
                         layer.compositionType = HWC_OVERLAY;
                         mLayerInfos[i]->mExternalMPP = supportedExternalMPP;
@@ -2509,6 +2513,7 @@ void ExynosDisplay::determineYuvOverlay(hwc_display_contents_1_t *contents)
                                     ALIGN_DOWN(HEIGHT(layer.displayFrame), supportedInternalMPP->getMinHeight(layer));
                             }
                         }
+                    }
                     }
                 } else {
                     if (getDrmMode(handle->flags) != NO_DRM) {
@@ -3116,9 +3121,9 @@ void ExynosDisplay::assignWindows(hwc_display_contents_1_t *contents)
                 } else {
                     DISPLAY_LOGD(eDebugResourceAssigning, "%zu layer can't use internalDMA, isProcessingRequired(%d)", i, isProcessingRequired(layer));
                     unsigned int dmaType = 0;
-                    mLayerInfos[i]->mWindowIndex = nextWindow;
                     if (mLayerInfos[i]->mInternalMPP != NULL) {
                         mLayerInfos[i]->mInternalMPP->setDisplay(this);
+                        mLayerInfos[i]->mWindowIndex = (mLayerInfos[i]->mInternalMPP->mType == MPP_VPP_G && MPP_VPP_G_TYPE(mLayerInfos[i]->mInternalMPP->mIndex) == IDMA_G2) ? 6 : nextWindow;
                         mLayerInfos[i]->mDmaType = getDeconDMAType(mLayerInfos[i]->mInternalMPP);
                         DISPLAY_LOGD(eDebugResourceAssigning, "assigning layer %zu to DMA %u", i, mLayerInfos[i]->mDmaType);
                     } else {
@@ -3136,6 +3141,7 @@ void ExynosDisplay::assignWindows(hwc_display_contents_1_t *contents)
 #endif
                             if ((mInternalMPPs[j]->mState == MPP_STATE_FREE) &&
                                     ((mInternalMPPs[j]->mDisplay == NULL) || (mInternalMPPs[j]->mDisplay == this))) {
+                                mLayerInfos[i]->mWindowIndex = (mInternalMPPs[j]->mType == MPP_VPP_G && MPP_VPP_G_TYPE(mInternalMPPs[j]->mIndex) == IDMA_G2) ? 6 : nextWindow;
                                 mLayerInfos[i]->mInternalMPP = mInternalMPPs[j];
                                 mLayerInfos[i]->mDmaType = getDeconDMAType(mLayerInfos[i]->mInternalMPP);
                                 mLayerInfos[i]->mInternalMPP->setDisplay(this);
