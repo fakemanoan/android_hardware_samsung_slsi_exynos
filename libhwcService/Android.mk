@@ -22,10 +22,11 @@ include $(CLEAR_VARS)
 
 LOCAL_PRELINK_MODULE := false
 LOCAL_SHARED_LIBRARIES := liblog libcutils libhardware_legacy libutils libbinder \
-			  libexynosv4l2 libhdmi libhwcutils libsync
+			  libexynosv4l2 libhdmi libhwcutils libsync libion libexynosutils
 LOCAL_CFLAGS += -DLOG_TAG=\"HWCService\"
 
 LOCAL_C_INCLUDES := \
+	$(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr/include \
 	$(TOP)/hardware/samsung_slsi/$(TARGET_BOARD_PLATFORM)/include \
 	$(TOP)/hardware/samsung_slsi/exynos/include \
 	$(TOP)/hardware/samsung_slsi/exynos/libhwcutils \
@@ -33,6 +34,9 @@ LOCAL_C_INCLUDES := \
 	$(TOP)/hardware/samsung_slsi/$(TARGET_SOC)/include \
 	$(TOP)/hardware/samsung_slsi/$(TARGET_SOC)/libhwcmodule \
 	$(TOP)/hardware/samsung_slsi/$(TARGET_SOC)/libdisplaymodule
+	
+LOCAL_ADDITIONAL_DEPENDENCIES := \
+	$(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr
 
 ifeq ($(BOARD_USES_VPP), true)
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/../libvppdisplay \
