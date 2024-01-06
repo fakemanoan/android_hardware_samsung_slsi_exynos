@@ -28,7 +28,7 @@
 #ifndef _LIBSCALER_M2M1SHOT_H_
 #define _LIBSCALER_M2M1SHOT_H_
 
-#include <linux/m2m1shot.h>
+#include <m2m1shot.h>
 
 class CScalerM2M1SHOT {
     int m_iFD;
